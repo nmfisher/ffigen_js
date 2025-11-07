@@ -1,8 +1,15 @@
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/stack.h>
 #include <emscripten/console.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
+#endif
+
+#ifndef EMSCRIPTEN_KEEPALIVE
+#define EMSCRIPTEN_KEEPALIVE __attribute__((visibility("default")))
+#define emscripten_console_logf printf
+#endif
 
 #include <stdlib.h>
 #include <string.h>
@@ -23,23 +30,6 @@ void EMSCRIPTEN_KEEPALIVE check_buffer(uint8_t *addr) {
         emscripten_console_logf("%d %d", i, addr[i]);
     }
 }
-
-emscripten::val emscripten_make_buffer(int ptr, int length) {
-    // char* buffer =(char*)malloc(length);
-    char *buffer = (char*)ptr;
-    for(int i = 0; i < length; i++) {
-        buffer[i] = i;
-    }
-
-    check_buffer((uint8_t*)ptr);
-    auto v = emscripten::val(emscripten::typed_memory_view(length, buffer));
-    return v;
-}
-
-EMSCRIPTEN_BINDINGS(module) {
-    emscripten::function("_emscripten_make_buffer", &emscripten_make_buffer, emscripten::allow_raw_pointers());
-}
-
 
 /** Adds 2 integers. */
 int EMSCRIPTEN_KEEPALIVE sum(int a, int b) {
@@ -168,7 +158,11 @@ EMSCRIPTEN_KEEPALIVE size_t size_tmethod(size_t number) {
 }
 
 EMSCRIPTEN_KEEPALIVE size_t get_stack_free() {
+    #ifdef __EMSCRIPTEN__
     return emscripten_stack_get_free();
+    #else
+    return 0;
+    #endif
 }
 
 EMSCRIPTEN_KEEPALIVE bool returns_bool() {
