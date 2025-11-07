@@ -1,6 +1,6 @@
 name: ffigen_js
 description: ffigen, but for Javascript/WebAssembly interop bindings  
-version: 1.0.0
+version: 0.0.1-pre
 repository: https://github.com/nmfisher/ffigen_js
 
 environment:
