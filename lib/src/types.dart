@@ -449,7 +449,7 @@ extension type NativeLibrary(JSObject _) implements JSObject {
 abstract base class Struct extends NativeType {
   
   final Pointer _address;
-  Pointer get address => address;
+  Pointer get address => _address;
 
   Struct(this._address);
 
