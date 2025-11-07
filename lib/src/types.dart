@@ -446,7 +446,7 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   external int _emscripten_stack_get_free();
 }
 
-abstract class Struct extends NativeType {
+abstract base class Struct extends NativeType {
   final Pointer address;
 
   Struct(this.address);
