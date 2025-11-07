@@ -1,6 +1,6 @@
 name: NativeLibrary
 description: Bindings to `headers/example.h`.
-output: 'lib/generated_bindings_js.dart'
+output: 'lib/generated_bindings_js.g.dart'
 headers:
   entry-points:
     - 'native/include/example.h'

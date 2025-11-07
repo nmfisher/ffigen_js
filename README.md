@@ -43,9 +43,9 @@ This will throw a compiler error when targeting native (since `js_bindings.dart`
 
 For compatibility, create a `bindings.dart` file instead:
 ```bindings.dart
-export 'generated_bindings_ffi.dart'
-    if (dart.library.io) 'generated_bindings_ffi.dart'     
-    if (dart.library.js_interop) 'generated_bindings_js.dart';
+export 'generated_bindings_ffi.g.dart'
+    if (dart.library.io) 'generated_bindings_ffi.g.dart'     
+    if (dart.library.js_interop) 'generated_bindings_js.g.dart';
 ```
 
 and then import this in your app.dart:
@@ -101,7 +101,7 @@ dart run ffigen --config ffi_config.yaml
 dart run lib/src/jsgen/executables/jsgen.dart --config js_config.yaml
 ```
 
-This will generate FFI bindings in [generated_bindings_ffi.dart](./example/lib/generated_bindings_ffi.dart) and [generated_bindings_js.dart](./example/lib/generated_bindings_js.dart). A conditional import file has already been created in [generated_bindings.dart](./example/lib/generated_bindings.dart); 
+This will generate FFI bindings in [generated_bindings_ffi.dart](./example/lib/generated_bindings_ffi.g.dart) and [generated_bindings_js.g.dart](./example/lib/generated_bindings_js.g.dart). A conditional import file has already been created in [generated_bindings.dart](./example/lib/generated_bindings.dart); 
 
 To run the application, make sure you have emscripten and node installed and available on your PATH, then call ./build.sh
 This will:
