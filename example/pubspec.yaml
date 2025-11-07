@@ -1,0 +1,14 @@
+# Copyright (c) 2020, the Dart project authors. Please see the AUTHORS file
+# for details. All rights reserved. Use of this source code is governed by a
+# BSD-style license that can be found in the LICENSE file.
+
+name: ffigen_js_example
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies: 
+  ffigen_js:
+    path: '../'
+dev_dependencies:  
+  lints: ^2.0.1

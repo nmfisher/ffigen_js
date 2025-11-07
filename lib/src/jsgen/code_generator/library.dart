@@ -1,0 +1,163 @@
+// Copyright (c) 2020, the Dart project authors. Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+import 'dart:io';
+
+import 'package:collection/collection.dart';
+import 'package:logging/logging.dart';
+import 'package:yaml_edit/yaml_edit.dart';
+
+import '../code_generator.dart';
+import '../config_provider/config_types.dart';
+import 'utils.dart';
+import 'writer.dart';
+
+final _logger = Logger('ffigen.code_generator.library');
+
+/// Container for all Bindings.
+class Library {
+  /// List of bindings in this library.
+  late List<Binding> bindings;
+
+  late Writer _writer;
+  Writer get writer => _writer;
+
+  Library({
+    required String name,
+    String? description,
+    required List<Binding> bindings,
+    String? header,
+    bool sort = false,
+    PackingValue? Function(Declaration)? packingOverride,
+    List<LibraryImport>? libraryImports,
+    bool silenceEnumWarning = false,
+    List<String> nativeEntryPoints = const <String>[],
+  }) {
+    _findBindings(bindings, sort);
+
+    final codeGenBindings = this.bindings.where((b) => b is Func || b is Global).toList();
+    final typeBindings = this.bindings.where((b) => b is!Global && b is! Func && b.name != 'true' && b.name != 'false').toList();
+
+    /// Handle any declaration-declaration name conflicts and emit warnings.
+    final declConflictHandler = UniqueNamer({});
+    for (final b in codeGenBindings) {
+      _warnIfPrivateDeclaration(b);
+      _resolveIfNameConflicts(declConflictHandler, b);
+    }
+
+    // Override pack values according to config. We do this after declaration
+    // conflicts have been handled so that users can target the generated names.
+    if (packingOverride != null) {
+      for (final b in this.bindings) {
+        if (b is Struct) {
+          final pack = packingOverride(Declaration(
+            usr: b.usr!,
+            originalName: b.originalName!,
+          ));
+          if (pack != null) {
+            b.pack = pack.value;
+          }
+        }
+      }
+    }
+
+    _writer = Writer(
+      bindings: codeGenBindings,
+      typeBindings: typeBindings,
+      className: name,
+      classDocComment: description,
+      header: header,
+      additionalImports: libraryImports,
+      silenceEnumWarning: silenceEnumWarning,
+      nativeEntryPoints: nativeEntryPoints,
+    );
+  }
+
+  void _findBindings(List<Binding> original, bool sort) {
+    /// Get all dependencies (includes itself).
+    final dependencies = <Binding>{};
+    for (final b in original) {
+      b.addDependencies(dependencies);
+    }
+
+    /// Save bindings.
+    this.bindings = dependencies.toList();
+    if (sort) {
+      this.bindings.sortBy((b) => b.name);
+      for (final b in bindings) {
+        b.sort();
+      }
+    }
+  }
+
+  /// Logs a warning if generated declaration will be private.
+  void _warnIfPrivateDeclaration(Binding b) {
+    if (b.name.startsWith('_') && !b.isInternal) {
+      _logger.warning("Generated declaration '${b.name}' starts with '_' "
+          'and therefore will be private.');
+    }
+  }
+
+  /// Resolves name conflict(if any) and logs a warning.
+  void _resolveIfNameConflicts(UniqueNamer namer, Binding b) {
+    // Print warning if name was conflicting and has been changed.
+    if (namer.isUsed(b.name)) {
+      final oldName = b.name;
+      b.name = namer.makeUnique(b.name);
+
+      _logger.warning("Resolved name conflict: Declaration '$oldName' "
+          "and has been renamed to '${b.name}'.");
+    } else {
+      namer.markUsed(b.name);
+    }
+  }
+
+  /// Generates [file] by generating C bindings.
+  ///
+  /// If format is true(default), the formatter will be called to format the
+  /// generated file.
+  void generateFile(File file, {bool format = true}) {
+    if (!file.existsSync()) file.createSync(recursive: true);
+    file.writeAsStringSync(generate());
+    if (format) {
+      _dartFormat(file.path);
+    }
+  }
+
+  /// Generates [file] with symbol output yaml.
+  void generateSymbolOutputFile(File file, String importPath) {
+    if (!file.existsSync()) file.createSync(recursive: true);
+    final symbolFileYamlMap = writer.generateSymbolOutputYamlMap(importPath);
+    final yamlEditor = YamlEditor('');
+    yamlEditor.update([], wrapAsYamlNode(symbolFileYamlMap));
+    var yamlString = yamlEditor.toString();
+    if (!yamlString.endsWith('\n')) {
+      yamlString += '\n';
+    }
+    file.writeAsStringSync(yamlString);
+  }
+
+  /// Formats a file using the Dart formatter.
+  void _dartFormat(String path) {
+    final result = Process.runSync(findDart(), ['format', path],
+        workingDirectory: Directory.current.absolute.path,
+        runInShell: Platform.isWindows);
+    if (result.stderr.toString().isNotEmpty) {
+      _logger.severe(result.stderr);
+      throw FormatException('Unable to format generated file: $path.');
+    }
+  }
+
+  /// Generates the bindings.
+  String generate() {
+    return writer.generate();
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is Library && other.generate() == generate();
+
+  @override
+  int get hashCode => bindings.hashCode;
+}

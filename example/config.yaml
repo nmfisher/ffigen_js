@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../ffigen.schema.json
+
+name: NativeLibrary
+description: Bindings to `headers/example.h`.
+output: 'lib/generated_bindings.dart'
+headers:
+  entry-points:
+    - 'native/include/example.h'
+enums:
+  as-int:
+    include:
+      - MyEnumAsInt
