@@ -207,6 +207,7 @@ import 'dart:typed_data';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'package:ffigen_js/ffigen_js.dart';
+export 'package:ffigen_js/ffigen_js.dart';
 
 extension type GeneratedBindings(NativeLibrary _) implements JSObject {
 
