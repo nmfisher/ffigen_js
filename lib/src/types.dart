@@ -447,9 +447,11 @@ extension type NativeLibrary(JSObject _) implements JSObject {
 }
 
 abstract base class Struct extends NativeType {
-  final Pointer address;
+  
+  final Pointer _address;
+  Pointer get address => address;
 
-  Struct(this.address);
+  Struct(this._address);
 
   static T create<T extends Struct>() {
     throw UnimplementedError();

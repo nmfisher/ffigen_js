@@ -136,8 +136,11 @@ extension ${name}Ext on Pointer<$name> {
   }
 }''');
 
-    s.write('final class $enclosingClassName extends ');
-    s.write('${isOpaque ? 'Struct' : dartClassName}{\n');
+    s.write('''
+final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} {
+
+    Pointer<$enclosingClassName> get address => super.address.cast();
+''');
     const depth = '  ';
     int offset = 0;
     for (final m in members) {
