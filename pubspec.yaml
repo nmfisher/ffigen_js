@@ -1,12 +1,15 @@
 name: ffigen_js
-description: A starting point for Dart libraries or applications.
+description: ffigen, but for Javascript/WebAssembly interop bindings  
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+repository: https://github.com/nmfisher/ffigen_js
 
 environment:
   sdk: ^3.10.0-162.1.beta
 
 dependencies:
+  collection: ^1.19.1
+  logging: ^1.3.0
+  package_config: ^2.2.0
   # path: ^1.9.0
 
 dev_dependencies:
