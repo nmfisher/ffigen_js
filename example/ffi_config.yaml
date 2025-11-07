@@ -1,0 +1,12 @@
+name: NativeLibrary
+description: Bindings to `headers/example.h`.
+output: 'lib/generated_bindings_ffi.dart'
+headers:
+  entry-points:
+    - 'native/include/example.h'
+ffi-native:
+  asset-id: package:ffigen_js_example/ffigen_js_example.dart
+enums:
+  as-int:
+    include:
+      - MyEnumAsInt
