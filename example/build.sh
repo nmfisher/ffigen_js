@@ -18,3 +18,5 @@ emcc --no-entry \
     ../native/src/example.cpp || exit -1;
 cp ../native/js/main.js .
 node main.js
+
+#clang++ -dynamiclib -Inative/include -std=c++17 -o build/example.dylib native/src/example.cpp
