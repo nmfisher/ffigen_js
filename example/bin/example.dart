@@ -1,17 +1,4 @@
-// ignore_for_file: unreachable_from_main
-import 'dart:js_interop';
 import '../lib/generated_bindings.dart';
-import 'package:ffigen_js/ffigen_js.dart';
-
-extension JSBackingBuffer on JSUint8Array {
-  @JS('buffer')
-  external JSObject buffer;
-}
-
-extension foo on JSArrayBuffer {
-  @JS('byteLength')
-  external int byteLength;
-}
 
 void main(List<String> args) async {
   print("Running WASM example");

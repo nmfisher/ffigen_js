@@ -10,5 +10,8 @@ environment:
 dependencies: 
   ffigen_js:
     path: '../'
+  dev: ^1.0.0
+
 dev_dependencies:  
   lints: ^2.0.1
+  ffigen: ^20.0.0
