@@ -293,11 +293,10 @@ class EnumClass extends BindingType {
   String getNativeType({String varName = ''}) => '$originalName $varName';
   
   @override
-
-  String get llvmType => throw UnimplementedError();
+  String get llvmType => "i32";
   
   @override
-  int get sizeInBytes => throw UnimplementedError();
+  int get sizeInBytes => 4;
 }
 
 
