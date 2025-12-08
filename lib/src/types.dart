@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:typed_data';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -237,8 +238,7 @@ extension DisposePointerClass<T extends NativeType> on Pointer<NativeFunction> {
 }
 
 extension type const Array<T extends NativeType>(
-  ({int numElements, Pointer<T> addr}) internal
-) {
+    ({int numElements, Pointer<T> addr}) internal) {
   Array<U> cast<U extends NativeType>() => this as Array<U>;
 
   Uint8List asUint8List() {
@@ -325,11 +325,31 @@ extension DartBigIntExtension on BigInt {
 final _allocations = <TypedData>{};
 
 Uint8List makeUint8List(int length) {
-  var ptr = malloc<Uint8>(length);
+  var ptr = stackAlloc<Uint8>(length);
   var buf = NativeLibrary.instance._emscripten_make_uint8_buffer(ptr, length);
   var uint8List = buf.toDart;
   _allocations.add(uint8List);
   return uint8List;
+}
+
+Int16List makeInt16List(int length) {
+  var ptr = stackAlloc<Int16>(length * 2);
+  var buf = NativeLibrary.instance._emscripten_make_int16_buffer(ptr, length);
+  var int16List = buf.toDart;
+  _allocations.add(int16List);
+  return int16List;
+}
+
+Uint16List makeUint16List(int length) {
+  var ptr = stackAlloc<Uint16>(length * 2);
+  var buf = NativeLibrary.instance._emscripten_make_uint16_buffer(ptr, length);
+  var uint16List = buf.toDart;
+  _allocations.add(uint16List);
+  return uint16List;
+}
+
+IntPtrList makeIntPtrList(int length) {
+  return makeInt32List(length);
 }
 
 Int32List makeInt32List(int length) {
@@ -447,7 +467,6 @@ extension type NativeLibrary(JSObject _) implements JSObject {
 }
 
 abstract base class Struct extends NativeType {
-  
   final Pointer _address;
   Pointer get address => _address;
 
@@ -656,13 +675,11 @@ extension AsUint8List on Pointer<Uint8> {
 extension AsFloat32List on Pointer<Float> {
   Float32List asTypedList(int length) {
     final start = addr;
-    final wrapper =
-        Float32ArrayWrapper(
-              NativeLibrary.instance.HEAPF32.buffer,
-              start,
-              length,
-            )
-            as JSFloat32Array;
+    final wrapper = Float32ArrayWrapper(
+      NativeLibrary.instance.HEAPF32.buffer,
+      start,
+      length,
+    ) as JSFloat32Array;
     return wrapper.toDart;
   }
 }

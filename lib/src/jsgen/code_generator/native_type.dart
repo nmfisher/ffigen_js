@@ -88,6 +88,7 @@ class NativeType extends Type {
           return 'Uint32';
         case 'short':
         case 'i16':
+        case 'int16_t':
           return 'Int16';
         case 'int':
         case 'int32_t':
