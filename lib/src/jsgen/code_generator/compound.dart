@@ -168,6 +168,10 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
           return '$dartType((numElements: ${arrType.length}, addr: ${m.type.getInteropDartType(w)}(this.address + $offset)))';
         } else if (m.type is PointerType) {
           return '$dartType($inner.toDartInt)';
+        } else if (m.type is EnumClass) {
+          // EnumClass extends BindingType, so check it before BindingType.
+          // For enum members, return the int value (with toDartInt conversion).
+          return '$inner.toDartInt';
         } else if (m.type is BooleanType) {
           return '$inner.toDartInt == 1';
         } else if (m.type is BindingType) {
@@ -181,29 +185,40 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
           return '($inner ? 1 : 0).toJS';
         } else if (m.type is ConstantArray) {
           return '${inner}.internal.addr.addr.toJS';
+        } else if (m.type is EnumClass) {
+          // EnumClass extends BindingType, so check it before BindingType.
+          // For enum members, we just convert the int value to JS.
+          return '$inner.toJS';
         } else if (m.type is BindingType) {
           return '${inner}.address.toJS';
         }
         return '$inner.toJS';
       }
 
+      // Determine the property name to use for the int getter/setter.
+      // For enum types, use 'AsInt' suffix so the enum getter can reference it.
+      final isEnumClass = m.type is EnumClass;
+      final generateAsInt = isEnumClass ? (m.type as EnumClass).generateAsInt : true;
+      final propertyName = (isEnumClass && !generateAsInt)
+          ? '${memberName}AsInt'
+          : memberName;
+
       s.write('''
-$dartType get $memberName {
+$dartType get $propertyName {
   final addr = this.address + $offset;
   final value = NativeLibrary.instance.getValue(addr, '${m.type.llvmType}')$toDart;
   return ${box('value', 'addr')};
 }
-set $memberName($dartType val) {
+set $propertyName($dartType val) {
   NativeLibrary.instance.setValue(this.address + $offset, ${boxJS('val')}, '${m.type.llvmType}');
 }
 ''');
 
-      if (m.type case EnumClass(:final generateAsInt) when !generateAsInt) {
+      if (isEnumClass && !generateAsInt) {
         final enumName = m.type.getDartType(w);
-        final memberName = m.name;
         s.write(
-          '${depth}$enumName get $memberName => '
-          '$enumName.fromValue(${memberName}AsInt);\n\n',
+          '$depth$enumName get $memberName => '
+          '$enumName.fromValue($propertyName);\n\n',
         );
       }
 
