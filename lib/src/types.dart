@@ -27,7 +27,10 @@ extension type const Pointer<T extends NativeType>(int addr) implements int {
   Pointer<T> operator +(int byteOffset) => Pointer<T>(this.addr + byteOffset);
   Pointer<U> cast<U extends NativeType>() => this as Pointer<U>;
   void free() {
-    _lib._free(this);
+    if (_heapAllocations.contains(this)) {
+      _heapAllocations.remove(this);
+      _lib._free(this);
+    }
   }
 
   int get address => addr;
@@ -237,7 +240,8 @@ extension DisposePointerClass<T extends NativeType> on Pointer<NativeFunction> {
 }
 
 extension type const Array<T extends NativeType>(
-    ({int numElements, Pointer<T> addr}) internal) {
+  ({int numElements, Pointer<T> addr}) internal
+) {
   Array<U> cast<U extends NativeType>() => this as Array<U>;
 
   Uint8List asUint8List() {
@@ -375,10 +379,33 @@ Float32List makeFloat32List(int length) {
   return f32List;
 }
 
-extension FreeTypedData<T> on TypedData {
+extension TypedDataExtension<T> on TypedData {
   void free() {
     Pointer<Void>(this.offsetInBytes).free();
     _allocations.remove(this);
+  }
+
+  Uint8List asUint8List() {
+    if (this is Int32List) {
+      return (this as Int32List).asUint8List();
+    }
+
+    if (this is Uint32List) {
+      return (this as Uint32List).asUint8List();
+    }
+
+    if (this is Int16List) {
+      return (this as Int16List).asUint8List();
+    }
+
+    if (this is Uint16List) {
+      return (this as Uint16List).asUint8List();
+    }
+
+    if (this is Float32List) {
+      return (this as Float32List).asUint8List();
+    }
+    throw UnimplementedError();
   }
 }
 
@@ -489,13 +516,16 @@ abstract base class Struct extends NativeType {
   }
 }
 
-Pointer<T> getPointer<T extends NativeType>(TypedData data, JSObject obj) {
+final _heapAllocations = <Pointer>{};
+
+Pointer<T> _getPointer<T extends NativeType>(TypedData data, JSObject obj) {
   late Pointer<T> ptr;
 
   if (data.lengthInBytes < 32 * 1024) {
     ptr = stackAlloc(data.lengthInBytes).cast<T>();
   } else {
     ptr = malloc<T>(data.lengthInBytes);
+    _heapAllocations.add(ptr);
   }
 
   return ptr;
@@ -560,7 +590,7 @@ extension Uint8ListExtension on Uint8List {
         NativeLibrary.instance._emscripten_get_byte_offset(this.toJS),
       );
     }
-    final ptr = getPointer<Uint8>(this, this.toJS);
+    final ptr = _getPointer<Uint8>(this, this.toJS);
     final wrapper =
         Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
             as JSUint8Array;
@@ -571,7 +601,7 @@ extension Uint8ListExtension on Uint8List {
 
 extension Float32ListExtension on Float32List {
   Pointer<Float32> get address {
-    final ptr = getPointer<Float32>(this, this.toJS);
+    final ptr = _getPointer<Float32>(this, this.toJS);
     final wrapper =
         Float32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
             as JSFloat32Array;
@@ -592,7 +622,7 @@ extension Int16ListExtension on Int16List {
     if (this.lengthInBytes == 0) {
       return nullptr;
     }
-    final ptr = getPointer<Int16>(this, this.toJS);
+    final ptr = _getPointer<Int16>(this, this.toJS);
     final wrapper =
         Int16ArrayWrapper(NativeLibrary.instance.HEAPU8, ptr, length)
             as JSInt16Array;
@@ -603,12 +633,19 @@ extension Int16ListExtension on Int16List {
 
 extension Uint16ListExtension on Uint16List {
   Pointer<Uint16> get address {
-    final ptr = getPointer<Uint16>(this, this.toJS);
+    final ptr = _getPointer<Uint16>(this, this.toJS);
     final wrapper =
         Uint16ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
             as JSUint16Array;
     wrapper.toDart.setRange(0, length, this);
     return ptr;
+  }
+
+  Uint8List asUint8List() {
+    var ptr = Pointer<Uint8>(
+      NativeLibrary.instance._emscripten_get_byte_offset(this.toJS),
+    );
+    return ptr.asTypedList(length * 4);
   }
 }
 
@@ -617,12 +654,19 @@ extension UInt32ListExtension on Uint32List {
     if (this.lengthInBytes == 0) {
       return nullptr;
     }
-    final ptr = getPointer<Uint32>(this, this.toJS);
+    final ptr = _getPointer<Uint32>(this, this.toJS);
     final wrapper =
         Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
             as JSUint32Array;
     wrapper.toDart.setRange(0, length, this);
     return ptr;
+  }
+
+  Uint8List asUint8List() {
+    var ptr = Pointer<Uint8>(
+      NativeLibrary.instance._emscripten_get_byte_offset(this.toJS),
+    );
+    return ptr.asTypedList(length * 4);
   }
 }
 
@@ -638,7 +682,7 @@ extension Int32ListExtension on Int32List {
     }
     try {
       this.buffer.asUint8List(this.offsetInBytes);
-      final ptr = getPointer<Int32>(this, this.toJS);
+      final ptr = _getPointer<Int32>(this, this.toJS);
       final wrapper =
           Int32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
               as JSInt32Array;
@@ -665,7 +709,7 @@ extension Float64ListExtension on Float64List {
     if (this.lengthInBytes == 0) {
       return nullptr;
     }
-    final ptr = getPointer<Float64>(this, this.toJS);
+    final ptr = _getPointer<Float64>(this, this.toJS);
     final wrapper =
         Float64ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length)
             as JSFloat64Array;
@@ -697,11 +741,13 @@ extension AsUint32List on Pointer<Uint32> {
 extension AsFloat32List on Pointer<Float> {
   Float32List asTypedList(int length) {
     final start = addr;
-    final wrapper = Float32ArrayWrapper(
-      NativeLibrary.instance.HEAPF32.buffer,
-      start,
-      length,
-    ) as JSFloat32Array;
+    final wrapper =
+        Float32ArrayWrapper(
+              NativeLibrary.instance.HEAPF32.buffer,
+              start,
+              length,
+            )
+            as JSFloat32Array;
     return wrapper.toDart;
   }
 }
