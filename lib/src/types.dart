@@ -440,6 +440,7 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   );
   external void removeFunction<T>(Pointer<NativeFunction<T>> f);
   external JSUint8Array get HEAPU8;
+  external JSUint32Array get HEAPU32;
   external JSFloat32Array get HEAPF32;
 
   external JSUint8Array _emscripten_make_uint8_buffer(
@@ -679,6 +680,16 @@ extension AsUint8List on Pointer<Uint8> {
     final wrapper =
         Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length)
             as JSUint8Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsUint32List on Pointer<Uint32> {
+  Uint32List asTypedList(int length) {
+    final start = addr;
+    final wrapper =
+        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length)
+            as JSUint32Array;
     return wrapper.toDart;
   }
 }
