@@ -1,4 +1,3 @@
-import 'dart:ffi';
 import 'dart:typed_data';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -352,6 +351,14 @@ IntPtrList makeIntPtrList(int length) {
   return makeInt32List(length);
 }
 
+Uint32List makeUint32List(int length) {
+  var ptr = stackAlloc<Uint32>(length * 4);
+  var buf = NativeLibrary.instance._emscripten_make_uint32_buffer(ptr, length);
+  var uint32List = buf.toDart;
+  _allocations.add(uint32List);
+  return uint32List;
+}
+
 Int32List makeInt32List(int length) {
   var ptr = stackAlloc<Int32>(length * 4);
   var buf = NativeLibrary.instance._emscripten_make_int32_buffer(ptr, length);
@@ -445,6 +452,10 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   );
   external JSInt16Array _emscripten_make_int16_buffer(
     Pointer<Int16> ptr,
+    int length,
+  );
+  external JSUint32Array _emscripten_make_uint32_buffer(
+    Pointer<Uint32> ptr,
     int length,
   );
   external JSInt32Array _emscripten_make_int32_buffer(
