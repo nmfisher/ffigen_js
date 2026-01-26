@@ -16,6 +16,26 @@ typedef struct {
     double y; 
     double z;
 } double3;
+enum TPrimitiveType {
+    // don't change the enums values (made to match GL)
+    PRIMITIVETYPE_POINTS         = 0,    //!< points
+    PRIMITIVETYPE_LINES          = 1,    //!< lines
+    PRIMITIVETYPE_LINE_STRIP     = 3,    //!< line strip
+    PRIMITIVETYPE_TRIANGLES      = 4,    //!< triangles
+    PRIMITIVETYPE_TRIANGLE_STRIP = 5     //!< triangle strip
+};
+typedef enum TPrimitiveType TPrimitiveType;
+
+typedef struct TGltfMeshData {
+        float* vertices;
+    uint32_t vertexCount;
+    uint32_t* indices;
+    uint32_t indexCount;
+     TPrimitiveType primitiveType;
+
+} TGltfMeshData;
+
+
 
 struct MyStruct { 
     float a;
@@ -97,6 +117,8 @@ enum MyEnumAsInt return_enum_as_int();
 
 uint64_t bigint_method(uint64_t number);
 size_t size_tmethod(size_t number);
+
+void foo(TGltfMeshData str);
 
 #ifdef __cplusplus
 }

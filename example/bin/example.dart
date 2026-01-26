@@ -146,4 +146,21 @@ void main(List<String> args) async {
       structWithStruct.struct2.array2[1]);
   assert(structWithStruct.struct2.array2[2] == 10.0,
       structWithStruct.struct2.array2[2]);
+
+  // Test TGltfMeshData with enum member
+  final meshData = TGltfMeshData.stackAlloc().toDart();
+  meshData.vertexCount = 3;
+  meshData.indexCount = 3;
+  // Set primitive type via int value (TRIANGLES = 4)
+  meshData.primitiveTypeAsInt = 4;
+  // Can read as enum or int
+  assert(meshData.primitiveType == TPrimitiveType.PRIMITIVETYPE_TRIANGLES);
+  assert(meshData.primitiveTypeAsInt == 4);
+
+  // Test setting primitive type via int (TRIANGLE_STRIP = 5)
+  meshData.primitiveTypeAsInt = 5;
+  assert(meshData.primitiveType == TPrimitiveType.PRIMITIVETYPE_TRIANGLE_STRIP);
+
+  foo(meshData);
+  print("TGltfMeshData enum test passed");
 }

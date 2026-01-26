@@ -169,4 +169,9 @@ EMSCRIPTEN_KEEPALIVE bool returns_bool() {
     return false;
 }
 
+void EMSCRIPTEN_KEEPALIVE foo(TGltfMeshData str) {
+    emscripten_console_logf("foo called: vertexCount=%d, indexCount=%d, primitiveType=%d",
+        str.vertexCount, str.indexCount, str.primitiveType);
+}
+
 }
