@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:ffigen_js/ffigen_js.dart';
+
 import '../lib/generated_bindings.dart';
 
 void main(List<String> args) async {
@@ -163,4 +167,78 @@ void main(List<String> args) async {
 
   foo(meshData);
   print("TGltfMeshData enum test passed");
+
+  // --- TypedData accessor tests ---
+  // These test the asUint8List() and .address extensions in types.dart
+  // to verify correct behavior for both WASM-heap and Dart-heap TypedData.
+
+  // Float32List (WASM-heap-backed via makeFloat32List)
+  final wasmF32 = makeFloat32List(3);
+  wasmF32[0] = 1.0;
+  wasmF32[1] = 2.0;
+  wasmF32[2] = 3.0;
+  final wasmF32Bytes = wasmF32.asUint8List();
+  assert(wasmF32Bytes.length == 12, "wasmF32.asUint8List().length=${wasmF32Bytes.length}, expected 12");
+  final wasmF32Addr = wasmF32.address;
+  assert(wasmF32Addr != 0, "wasmF32.address should be non-zero");
+
+  // Float32List (Dart-heap — this is what GeometryHelper.cube() produces)
+  final dartF32 = Float32List.fromList([1.0, 2.0, 3.0]);
+  final dartF32Bytes = dartF32.asUint8List();
+  assert(dartF32Bytes.length == 12, "dartF32.asUint8List().length=${dartF32Bytes.length}, expected 12");
+  // Verify data integrity: float 1.0 = 0x3F800000 (little-endian: 00 00 80 3F)
+  assert(
+      dartF32Bytes[0] == 0x00 &&
+          dartF32Bytes[1] == 0x00 &&
+          dartF32Bytes[2] == 0x80 &&
+          dartF32Bytes[3] == 0x3F,
+      "dartF32.asUint8List() data mismatch: [${dartF32Bytes[0]}, ${dartF32Bytes[1]}, ${dartF32Bytes[2]}, ${dartF32Bytes[3]}]");
+  final dartF32Addr = dartF32.address;
+  assert(dartF32Addr != 0, "dartF32.address should be non-zero");
+  print("Float32List tests passed");
+
+  // Uint16List (WASM-heap)
+  final wasmU16 = makeUint16List(6);
+  for (int i = 0; i < 6; i++) {
+    wasmU16[i] = i;
+  }
+  final wasmU16Bytes = wasmU16.asUint8List();
+  assert(wasmU16Bytes.length == 12, "wasmU16.asUint8List().length=${wasmU16Bytes.length}, expected 12 (6*2)");
+
+  // Uint16List (Dart-heap)
+  final dartU16 = Uint16List.fromList([0, 1, 2, 3, 4, 5]);
+  final dartU16Bytes = dartU16.asUint8List();
+  assert(dartU16Bytes.length == 12, "dartU16.asUint8List().length=${dartU16Bytes.length}, expected 12 (6*2)");
+  print("Uint16List tests passed");
+
+  // Uint32List (WASM-heap)
+  final wasmU32 = makeUint32List(3);
+  wasmU32[0] = 100;
+  wasmU32[1] = 200;
+  wasmU32[2] = 300;
+  final wasmU32Bytes = wasmU32.asUint8List();
+  assert(wasmU32Bytes.length == 12, "wasmU32.asUint8List().length=${wasmU32Bytes.length}, expected 12 (3*4)");
+  print("Uint32List tests passed");
+
+  // Int32List (WASM-heap)
+  final wasmI32 = makeInt32List(3);
+  wasmI32[0] = -1;
+  wasmI32[1] = 0;
+  wasmI32[2] = 1;
+  final wasmI32Bytes = wasmI32.asUint8List();
+  assert(wasmI32Bytes.length == 12, "wasmI32.asUint8List().length=${wasmI32Bytes.length}, expected 12 (3*4)");
+  print("Int32List tests passed");
+
+  // Round-trip test: mimics the setBufferAt flow
+  //   data.asUint8List() → byteData.address.cast() → pass to native
+  final srcF32 = makeFloat32List(3);
+  srcF32[0] = 42.0;
+  srcF32[1] = -1.5;
+  srcF32[2] = 0.0;
+  final srcBytes = srcF32.asUint8List();
+  final srcAddr = srcBytes.address;
+  assert(srcAddr != 0, "round-trip address should be non-zero");
+  print("Round-trip test passed");
+
+  print("All TypedData accessor tests passed");
 }
