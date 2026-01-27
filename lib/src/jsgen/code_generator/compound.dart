@@ -170,8 +170,8 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
           return '$dartType($inner.toDartInt)';
         } else if (m.type is EnumClass) {
           // EnumClass extends BindingType, so check it before BindingType.
-          // For enum members, return the int value (with toDartInt conversion).
-          return '$inner.toDartInt';
+          // For enum members, value is already converted to int.
+          return inner;
         } else if (m.type is BooleanType) {
           return '$inner.toDartInt == 1';
         } else if (m.type is BindingType) {
