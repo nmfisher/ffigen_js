@@ -645,7 +645,7 @@ extension Uint16ListExtension on Uint16List {
     var ptr = Pointer<Uint8>(
       NativeLibrary.instance._emscripten_get_byte_offset(this.toJS),
     );
-    return ptr.asTypedList(length * 4);
+    return ptr.asTypedList(length * 2);
   }
 }
 
