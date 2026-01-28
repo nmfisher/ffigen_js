@@ -159,13 +159,13 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
       final toDart = switch (m.type.getDartType(w)) {
         'double' => '.toDartDouble',
         'int' => '.toDartInt',
-        _ => ''
+        _ => m.type is EnumClass ? '.toDartInt' : ''
       };
 
       String box(String inner, String addr) {
         if (m.type is ConstantArray) {
           var arrType = m.type as ConstantArray;
-          return '$dartType((numElements: ${arrType.length}, addr: ${m.type.getInteropDartType(w)}(this.address + $offset)))';
+          return '$dartType((numElements: ${arrType.length}, addr: ${m.type.getInteropDartType(w)}(this.address.addr + $offset)))';
         } else if (m.type is PointerType) {
           return '$dartType($inner.toDartInt)';
         } else if (m.type is EnumClass) {
@@ -205,12 +205,12 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
 
       s.write('''
 $dartType get $propertyName {
-  final addr = this.address + $offset;
+  final addr = Pointer<$enclosingClassName>(this.address.addr + $offset);
   final value = NativeLibrary.instance.getValue(addr, '${m.type.llvmType}')$toDart;
   return ${box('value', 'addr')};
 }
 set $propertyName($dartType val) {
-  NativeLibrary.instance.setValue(this.address + $offset, ${boxJS('val')}, '${m.type.llvmType}');
+  NativeLibrary.instance.setValue(Pointer<$enclosingClassName>(this.address.addr + $offset), ${boxJS('val')}, '${m.type.llvmType}');
 }
 ''');
 

@@ -178,14 +178,16 @@ void main(List<String> args) async {
   wasmF32[1] = 2.0;
   wasmF32[2] = 3.0;
   final wasmF32Bytes = wasmF32.asUint8List();
-  assert(wasmF32Bytes.length == 12, "wasmF32.asUint8List().length=${wasmF32Bytes.length}, expected 12");
+  assert(wasmF32Bytes.length == 12,
+      "wasmF32.asUint8List().length=${wasmF32Bytes.length}, expected 12");
   final wasmF32Addr = wasmF32.address;
   assert(wasmF32Addr != 0, "wasmF32.address should be non-zero");
 
   // Float32List (Dart-heap — this is what GeometryHelper.cube() produces)
   final dartF32 = Float32List.fromList([1.0, 2.0, 3.0]);
   final dartF32Bytes = dartF32.asUint8List();
-  assert(dartF32Bytes.length == 12, "dartF32.asUint8List().length=${dartF32Bytes.length}, expected 12");
+  assert(dartF32Bytes.length == 12,
+      "dartF32.asUint8List().length=${dartF32Bytes.length}, expected 12");
   // Verify data integrity: float 1.0 = 0x3F800000 (little-endian: 00 00 80 3F)
   assert(
       dartF32Bytes[0] == 0x00 &&
@@ -203,12 +205,14 @@ void main(List<String> args) async {
     wasmU16[i] = i;
   }
   final wasmU16Bytes = wasmU16.asUint8List();
-  assert(wasmU16Bytes.length == 12, "wasmU16.asUint8List().length=${wasmU16Bytes.length}, expected 12 (6*2)");
+  assert(wasmU16Bytes.length == 12,
+      "wasmU16.asUint8List().length=${wasmU16Bytes.length}, expected 12 (6*2)");
 
   // Uint16List (Dart-heap)
   final dartU16 = Uint16List.fromList([0, 1, 2, 3, 4, 5]);
   final dartU16Bytes = dartU16.asUint8List();
-  assert(dartU16Bytes.length == 12, "dartU16.asUint8List().length=${dartU16Bytes.length}, expected 12 (6*2)");
+  assert(dartU16Bytes.length == 12,
+      "dartU16.asUint8List().length=${dartU16Bytes.length}, expected 12 (6*2)");
   print("Uint16List tests passed");
 
   // Uint32List (WASM-heap)
@@ -217,7 +221,8 @@ void main(List<String> args) async {
   wasmU32[1] = 200;
   wasmU32[2] = 300;
   final wasmU32Bytes = wasmU32.asUint8List();
-  assert(wasmU32Bytes.length == 12, "wasmU32.asUint8List().length=${wasmU32Bytes.length}, expected 12 (3*4)");
+  assert(wasmU32Bytes.length == 12,
+      "wasmU32.asUint8List().length=${wasmU32Bytes.length}, expected 12 (3*4)");
   print("Uint32List tests passed");
 
   // Int32List (WASM-heap)
@@ -226,7 +231,8 @@ void main(List<String> args) async {
   wasmI32[1] = 0;
   wasmI32[2] = 1;
   final wasmI32Bytes = wasmI32.asUint8List();
-  assert(wasmI32Bytes.length == 12, "wasmI32.asUint8List().length=${wasmI32Bytes.length}, expected 12 (3*4)");
+  assert(wasmI32Bytes.length == 12,
+      "wasmI32.asUint8List().length=${wasmI32Bytes.length}, expected 12 (3*4)");
   print("Int32List tests passed");
 
   // Round-trip test: mimics the setBufferAt flow
@@ -241,4 +247,35 @@ void main(List<String> args) async {
   print("Round-trip test passed");
 
   print("All TypedData accessor tests passed");
+
+  // --- Pointer<PointerClass<T>> (double-pointer) tests ---
+
+  // Test allocArray + operator[] + operator[]=
+  final ptrArray = PointerClass.allocArray<Int32>(3);
+  final p0 = Int32.stackAlloc(1)..setValue(100);
+  final p1 = Int32.stackAlloc(1)..setValue(200);
+  final p2 = Int32.stackAlloc(1)..setValue(300);
+  ptrArray[0] = p0;
+  ptrArray[1] = p1;
+  ptrArray[2] = p2;
+  // Read back stored pointers and verify values
+  assert(ptrArray[0].getValue() == 100, "ptrArray[0]=${ptrArray[0].getValue()}");
+  assert(ptrArray[1].getValue() == 200, "ptrArray[1]=${ptrArray[1].getValue()}");
+  assert(ptrArray[2].getValue() == 300, "ptrArray[2]=${ptrArray[2].getValue()}");
+  print("PointerClass.allocArray + operator[] test passed");
+
+  // Test ptr_ptr native function (swaps two int**)
+  final a = PointerClass.allocArray<Int32>(1);
+  final b = PointerClass.allocArray<Int32>(1);
+  final valA = Int32.stackAlloc(1)..setValue(10);
+  final valB = Int32.stackAlloc(1)..setValue(20);
+  a[0] = valA;
+  b[0] = valB;
+  final swapped = ptr_ptr(a, b);
+  // ptr_ptr swaps: out[0] = *b, out[1] = *a
+  assert(swapped[0].getValue() == 20, "swapped[0]=${swapped[0].getValue()}");
+  assert(swapped[1].getValue() == 10, "swapped[1]=${swapped[1].getValue()}");
+  print("ptr_ptr native call test passed");
+
+  print("All Pointer<PointerClass<T>> tests passed");
 }
