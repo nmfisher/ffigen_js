@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      # package:ffigen (native bindings) and jsgen (web bindings) both parse
+      # headers through libclang; build.sh regenerates both.
+      - name: Install libclang
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      # The critical piece: without emcc, build.sh skips the Emscripten
+      # build and run_web.sh silently falls back to a JS stand-in instead
+      # of the compiled C (see tool/dual_target_smoke/README.md).
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.73
+          actions-cache-folder: emsdk-cache
+
+      - name: Verify toolchain
+        run: |
+          dart --version
+          cc --version | head -1
+          emcc --version | head -1
+
+      - name: Resolve dependencies
+        run: dart pub get
+
+      - name: Build dual-target fixture (native lib + real Emscripten module + bindings)
+        run: tool/dual_target_smoke/build.sh
+
+      - name: Assert the Emscripten module was actually built
+        run: test -f tool/dual_target_smoke/build/dual.js
+
+      - name: Run test suite (native half of the dual-target smoke included)
+        run: dart test
+
+      - name: Run web half of the dual-target smoke (dart compile wasm + node)
+        run: |
+          set -o pipefail
+          tool/dual_target_smoke/run_web.sh 2>&1 | tee web.log
+
+      # The web half must have run against the REAL emcc-compiled module,
+      # not the JS stand-in main.mjs falls back to when dual.js is missing.
+      - name: Assert the real module was used, not the JS stand-in
+        run: |
+          grep -q "using REAL Emscripten module" web.log
+          if grep -q "JS STAND-IN" web.log; then
+            echo "::error::web half used the JS stand-in, not the emcc-compiled C"
+            exit 1
+          fi
+          grep -q "DUAL TARGET SMOKE OK (web)" web.log

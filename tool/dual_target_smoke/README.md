@@ -64,22 +64,24 @@ Everything (build both targets + regenerate bindings + native lib):
 tool/dual_target_smoke/build.sh
 ```
 
-## What CI must confirm
+## What CI confirms
 
-This container has no `emcc`, so `run_web.sh` here runs against a JS
-stand-in for the module (`main.mjs` builds it when `build/dual.js` is
-absent). The stand-in mirrors `dual.c` exactly - including snprintf
-semantics - but it is not compiled C. CI with emcc installed must:
+`main.mjs` falls back to a JS stand-in when `build/dual.js` is absent, so
+a machine without `emcc` still prints `SMOKE OK` without ever running the
+compiled C. CI therefore must (and `.github/workflows/ci.yml` does):
 
-1. run `tool/dual_target_smoke/build.sh` (compiles `dual.c` with emcc into
-   `build/dual.js`, with the runtime exports ffigen_js needs), then
-2. run `tool/dual_target_smoke/run_web.sh` - `main.mjs` prefers the real
-   module when it exists and prints which one it used, and
-3. run `dart test` (native half).
+1. install emcc (mymindstorm/setup-emsdk, pinned to 3.1.73),
+2. run `tool/dual_target_smoke/build.sh` (compiles `dual.c` with emcc into
+   `build/dual.js`, with the runtime exports ffigen_js needs),
+3. run `tool/dual_target_smoke/run_web.sh`, and FAIL unless the log says
+   `main.mjs: using REAL Emscripten module (build/dual.js)` and never
+   mentions the `JS STAND-IN`, and
+4. run `dart test` (native half).
 
-The dart2wasm side (consumer + conditional import + generated JS bindings)
-is genuinely exercised even without emcc; only the C-to-wasm compilation is
-stubbed in the stand-in path.
+Verified end to end locally with emcc 3.1.73: the real-module run prints
+the same `add=42 point=(3.0, 6.5) greet="hello, dual-target!"` as the
+stand-in run did, so the stand-in was faithful - but only the emcc run
+actually executed the compiled C.
 
 ## Mapping to thermion / reactphysics3d_dart
 
