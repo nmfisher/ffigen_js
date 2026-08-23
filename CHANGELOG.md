@@ -26,6 +26,13 @@ Per-module library support (phase 1 of the multi-module design,
   releases them (previously `Pointer.free` only freed `addressOf` copies).
 - Adds `tool/multi_module_smoke` (dart2wasm + node harness against two fake
   Emscripten modules) and a legacy-bindings compatibility test.
+- Adds `tool/dual_target_smoke` + `test/dual_target_native_test.dart`: one C
+  fixture compiled to a native library AND an Emscripten module, bindings
+  generated for both from the same header, and a single conditional-import
+  consumer run verbatim through `dart test` (native) and `dart compile
+  wasm` + node (web) - the pattern thermion_dart/reactphysics3d_dart ship.
+  The Emscripten half needs emcc and falls back to a labeled JS stand-in
+  without it; CI should run `tool/dual_target_smoke/build.sh`.
 
 ## 0.0.14-pre
 

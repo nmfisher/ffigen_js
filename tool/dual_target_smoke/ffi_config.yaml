@@ -1,0 +1,10 @@
+# Native (dart:ffi) bindings for the dual-target fixture. Same header as
+# js_config.yaml; only the output differs. Uses the constructible
+# DynamicLibrary wrapper (no `ffi-native:`), so the native test can
+# DynamicLibrary.open() the compiled libdual.so under plain `dart test`.
+name: DualNativeLibrary
+description: Native (dart:ffi) bindings for the dual-target smoke fixture.
+output: 'generated/dual_bindings_ffi.g.dart'
+headers:
+  entry-points:
+    - 'native/include/dual.h'
