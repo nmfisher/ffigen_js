@@ -636,6 +636,44 @@ lives — not recommended.
 
 ---
 
+## 9. Implementation status (phase 1, 0.0.15-pre)
+
+Phase 1 (Option A3) is implemented with one deliberate deviation from §5's
+config sketch: instead of a new `module: {name: ..., make-default: ...}`
+block, the per-module name reuses **ffigen's own `ffi-native: asset-id:`**
+config key (same class name `FfiNativeConfig`, same YAML shape as
+`package:ffigen`). This keeps ffigen_js config-consistent with ffigen, per
+the project constraint; `asset-id` maps to the JS module name (the JS global
+holding the resolved Emscripten `Module`), and it is baked into the
+generated `initBindings` as its default argument — the analog of ffigen
+baking the asset id into `@DefaultAsset`. `makeDefault` stays a runtime
+parameter of `init`/`initBindings` rather than a config key, since only the
+app knows module load order.
+
+What landed (branch `asb/multi-module-plan`):
+
+- Runtime: `NativeLibrary.init`/`byName`/`setDefault` (first-wins default
+  slot), instance-scoped helpers, ambient API unchanged (`types.dart`).
+- Generator: per-file `GeneratedBindings.instance` with ambient fallback;
+  struct/global/function-pointer emission dispatches through it
+  (`writer.dart`, `compound.dart`, `global.dart`, `func_type.dart`).
+- Config: `ffi-native: asset-id:` parsed into `FfiNativeConfig` and threaded
+  to the writer.
+- Verification: `tool/multi_module_smoke` (dart2wasm + node against two fake
+  Emscripten modules; same-address/opposite-contents heap isolation),
+  legacy-bindings compatibility fixture (`test/fixtures/`), generator
+  template tests, regenerated example bindings.
+
+§8.6 is addressed: `_resolveModule` now distinguishes `undefined` from a
+module object via `getProperty` null semantics on dart2wasm — validated in
+the smoke harness (missing module raises, not silently treated as a library).
+
+Still open for phase 2 (§5.5): rp3d migration (~40 ambient call sites,
+`makeDefault: false`), thermion regeneration is optional (existing files
+keep working via the ambient fallback).
+
+---
+
 ## References
 
 - Prior scoping: thermion `docs/research/web-physics-scope.md`
