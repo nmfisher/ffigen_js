@@ -206,11 +206,11 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
       s.write('''
 $dartType get $propertyName {
   final addr = Pointer<$enclosingClassName>(this.address.addr + $offset);
-  final value = NativeLibrary.instance.getValue(addr, '${m.type.llvmType}')$toDart;
+  final value = GeneratedBindings.instance.getValue(addr, '${m.type.llvmType}')$toDart;
   return ${box('value', 'addr')};
 }
 set $propertyName($dartType val) {
-  NativeLibrary.instance.setValue(Pointer<$enclosingClassName>(this.address.addr + $offset), ${boxJS('val')}, '${m.type.llvmType}');
+  GeneratedBindings.instance.setValue(Pointer<$enclosingClassName>(this.address.addr + $offset), ${boxJS('val')}, '${m.type.llvmType}');
 }
 ''');
 
@@ -230,7 +230,7 @@ set $propertyName($dartType val) {
 
     s.write('''
 static Pointer<$name> stackAlloc() {
-    return Pointer<$name>(NativeLibrary.instance.stackAlloc<$name>($sizeInBytes));
+    return Pointer<$name>(GeneratedBindings.instance.stackAlloc<$name>($sizeInBytes));
   }
   ''');
 

@@ -135,6 +135,12 @@ abstract interface class Config {
   /// Doc comment for the wrapper class.
   String? get wrapperDocComment;
 
+  /// Configuration from the `ffi-native:` section. The `asset-id` names the
+  /// JS module (JS global holding the resolved Emscripten `Module`) that the
+  /// generated bindings default to - ffigen_js's analog of ffigen's
+  /// native-assets asset id.
+  FfiNativeConfig get ffiNativeConfig;
+
   /// Header of the generated bindings.
   String? get preamble;
 
@@ -209,6 +215,7 @@ abstract interface class Config {
     String? Function(Declaration declaration)? protocolModuleFunc,
     String wrapperName = 'NativeLibrary',
     String? wrapperDocComment,
+    FfiNativeConfig ffiNativeConfig = const FfiNativeConfig(enabled: false),
     String? preamble,
     bool useDartHandle = true,
     bool silenceEnumWarning = false,
@@ -275,6 +282,7 @@ abstract interface class Config {
         protocolModuleFunc: protocolModuleFunc ?? (_) => null,
         wrapperName: wrapperName,
         wrapperDocComment: wrapperDocComment,
+        ffiNativeConfig: ffiNativeConfig,
         preamble: preamble,
         useDartHandle: useDartHandle,
         silenceEnumWarning: silenceEnumWarning,

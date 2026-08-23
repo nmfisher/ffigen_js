@@ -226,6 +226,13 @@ class YamlConfig implements Config {
   String get wrapperName => _wrapperName;
   late String _wrapperName;
 
+  /// Configuration from the `ffi-native:` section. The `asset-id` is the
+  /// JS module name the generated bindings default to (ffigen_js's analog
+  /// of ffigen's native-assets asset id).
+  @override
+  FfiNativeConfig get ffiNativeConfig => _ffiNativeConfig;
+  late FfiNativeConfig _ffiNativeConfig;
+
   /// Doc comment for the wrapper class.
   @override
   String? get wrapperDocComment => _wrapperDocComment;
@@ -830,7 +837,11 @@ class YamlConfig implements Config {
                 ],
               )
             ],
+            transform: (node) => ffiNativeExtractor(_logger, node.value),
           ),
+          defaultValue: (node) => const FfiNativeConfig(enabled: false),
+          resultOrDefault: (node) =>
+              _ffiNativeConfig = node.value as FfiNativeConfig,
         ),
         HeterogeneousMapEntry(
           key: strings.silenceEnumWarning,

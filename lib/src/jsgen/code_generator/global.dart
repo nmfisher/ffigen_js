@@ -60,7 +60,7 @@ class Global extends Binding {
         final isBigInt = type.llvmType == "i64";
         
         s.write('''$dartType get ${pointerName.replaceFirst('_', "")} {
-            final value = NativeLibrary.instance.getValue${isBigInt ? "BigInt" : ""}(GeneratedBindings.instance.$pointerName, "${type.llvmType}");''');
+            final value = GeneratedBindings.instance.getValue${isBigInt ? "BigInt" : ""}(GeneratedBindings.instance.$pointerName, "${type.llvmType}");''');
         if(isBigInt) {
           if(type.getNativeType() == "uint64_t") {
             s.write('return bigIntasUintN(64, value).toDart;');
