@@ -8,3 +8,7 @@ pubspec.lock
 
 example/build
 example/lib/*.g.dart
+
+# dual-target smoke build artifacts (bindings in generated/ ARE committed
+# so the tests run without libclang/codegen)
+tool/dual_target_smoke/build

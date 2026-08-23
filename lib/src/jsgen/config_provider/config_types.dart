@@ -461,6 +461,23 @@ class ExternalVersions {
   const ExternalVersions({this.ios, this.macos});
 }
 
+/// Configuration for the `ffi-native:` section of the config.
+///
+/// Mirrors `package:ffigen`'s `FfiNativeConfig` (same class name, fields,
+/// and YAML shape `ffi-native: { asset-id: ... }`). Where ffigen uses
+/// `ffi-native:` to switch bindings to `@Native`-style external functions
+/// and resolves `asset-id` through the native assets machinery at load
+/// time, ffigen_js always generates JS interop bindings and treats
+/// `asset-id` as the *module name*: the JS global holding the resolved
+/// Emscripten `Module` instance (e.g. `window.thermion_dart`). The name is
+/// baked into the generated `initBindings` as its default argument.
+class FfiNativeConfig {
+  final bool enabled;
+  final String? assetId;
+
+  const FfiNativeConfig({required this.enabled, this.assetId});
+}
+
 class Versions {
   final Version? min;
 

@@ -58,6 +58,65 @@ void myMethod() {
 
 This will import the correct bindings file depending on the platform being targeted.
 
+## Multiple modules on one page
+
+Up to 0.0.14, all bindings and all runtime helpers funneled through a single
+global library instance, so loading two Emscripten modules in one page meant
+two modules silently sharing (and corrupting) one heap view. The runtime now
+supports per-module libraries while keeping the old ambient API unchanged:
+
+```dart
+import 'thermion_bindings_js.g.dart' as thermion; // generated with asset-id: thermion
+import 'rp3d_bindings_js.g.dart' as rp3d;         // generated with asset-id: rp3d
+
+// The page publishes each resolved Emscripten Module under a JS global,
+// e.g. globalThis['thermion'] = await thermion(); ...
+
+thermion.GeneratedBindings.initBindings();                     // claims the ambient slot
+rp3d.GeneratedBindings.initBindings(null, makeDefault: false); // second module
+```
+
+Each generated bindings file keeps its own `instance`, and every runtime
+helper also exists in an instance-scoped form for hand-written code:
+
+```dart
+final lib = NativeLibrary.byName('rp3d');
+final name = lib.toNativeUtf8('hello');
+final out = lib.makeFloat32List(16);
+```
+
+Rules of thumb:
+
+- The **first** `init`/`initBindings` with `makeDefault: true` (the default)
+  owns the ambient slot; later claims by a different module are ignored with
+  a warning. Initialize secondary modules with `makeDefault: false`.
+- Legacy single-module code (`GeneratedBindings.initBindings("module")`,
+  `NativeLibrary.instance`, `'str'.toNativeUtf8()`, `makeUint8List(...)`,
+  `.address`, ...) behaves exactly as before: it all targets the ambient
+  module.
+- With several modules loaded, avoid the ambient sugar in hand-written code;
+  call the instance-scoped helpers on the right `NativeLibrary` instead.
+  `GeneratedBindings.instance = someLib` re-points just that one bindings
+  file, and `NativeLibrary.instance = someLib` switches the ambient library
+  deliberately (last write wins, as in previous versions).
+
+### Relationship to `ffigen`'s `ffi-native: asset-id:`
+
+`ffi-native: asset-id:` in a `jsgen` config names the module the generated
+bindings resolve against - the same conceptual role as in `package:ffigen`:
+
+| `package:ffigen` | `ffigen_js` |
+| --- | --- |
+| `ffi-native: asset-id: <id>` | `ffi-native: asset-id: <module name>` |
+| asset id resolved through native assets at load time | module name resolved as a JS global holding the Emscripten `Module` (e.g. `window.thermion`) |
+| baked into `@DefaultAsset` / `@Native(assetId: ...)` | baked into the generated `initBindings` as its default module name |
+| `NativeLibrary(DynamicLibrary)` wrapper instance | `NativeLibrary.init(name)` / `byName(name)` library instances |
+| `ffi-native:` switches to `@Native` binding style | (no equivalent: bindings are always JS interop) |
+
+The generated bindings then default to the configured module name:
+`GeneratedBindings.initBindings()` needs no argument (one can still be
+passed to override).
+
 With some exceptions (see below), you won't have to adjust your calling code depending on whether you're targeting WASM or native platforms.
 
 ## Generating bindings

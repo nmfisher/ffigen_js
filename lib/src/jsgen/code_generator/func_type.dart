@@ -96,7 +96,7 @@ class FunctionType extends Type {
     s.write('''extension NativeFunctionPointer$index<T extends NativeType> on $targetType { 
 
     Pointer<NativeFunction<$originalType>> addFunction() {
-      return Pointer<NativeFunction<$originalType>>(NativeLibrary.instance.addFunction<$originalType>(this.toJS, '${wasmSignature}')).cast();
+      return Pointer<NativeFunction<$originalType>>(GeneratedBindings.instance.addFunction<$originalType>(this.toJS, '${wasmSignature}')).cast();
   }
     }
   

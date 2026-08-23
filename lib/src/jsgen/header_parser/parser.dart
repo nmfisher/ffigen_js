@@ -35,6 +35,7 @@ Library parse(Config c) {
     libraryImports: c.libraryImports.values.toList(),
     silenceEnumWarning: c.silenceEnumWarning,
     nativeEntryPoints: c.entryPoints.map((uri) => uri.toFilePath()).toList(),
+    ffiNativeConfig: c.ffiNativeConfig,
   );
 
   return library;

@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -38,12 +39,7 @@ extension type const Pointer<T extends NativeType>(int addr) implements int {
   const Pointer.fromAddress(int address) : addr = address;
   Pointer<T> operator +(int numElements) => Pointer<T>(this.addr + (numElements * sizeOf<T>()));
   Pointer<U> cast<U extends NativeType>() => this as Pointer<U>;
-  void free() {
-    if (_heapAllocations.contains(this)) {
-      _heapAllocations.remove(this);
-      _lib._free(this);
-    }
-  }
+  void free() => _lib.free(this);
 
   int get address => addr;
 }
@@ -244,23 +240,14 @@ extension Float64Pointer on Pointer<Float64> {
 }
 
 extension StringUtils on String {
-  Pointer<Char> toNativeUtf8() {
-    var len = _lib._lengthBytesUTF8(this) + 1;
-    var ptr = Char.stackAlloc(len);
-    _lib._stringToUTF8(this, ptr, len);
-    return ptr;
-  }
+  Pointer<Char> toNativeUtf8() => NativeLibrary.instance.toNativeUtf8(this);
 }
 
 extension CharPtr on Pointer<Char> {
-  void setValue(String value) {
-    var len = _lib._lengthBytesUTF8(value);
-    _lib._stringToUTF8(value, this, len);
-  }
+  void setValue(String value) =>
+      NativeLibrary.instance.setNativeUtf8(this, value);
 
-  String toDartString() {
-    return _lib._UTF8ToString(this);
-  }
+  String toDartString() => NativeLibrary.instance.utf8ToString(this);
 
   static Pointer<Char> fromAddress(int addr) => Pointer<Char>(addr);
 }
@@ -318,14 +305,17 @@ extension ArrayFloat64Ext on Array<Float64> {
 
 late NativeLibrary _lib;
 
-Pointer<T> malloc<T extends NativeType>(int numBytes) {
-  return _lib._malloc<T>(numBytes);
-}
+/// Allocates [numBytes] from the ambient module's malloc heap.
+///
+/// The returned pointer is tracked so [free] (and `Pointer.free`) can
+/// release it. For explicit per-module allocation use the library handle
+/// returned by [NativeLibrary.init].
+Pointer<T> malloc<T extends NativeType>(int numBytes) =>
+    NativeLibrary.instance.malloc<T>(numBytes);
 
-Pointer<T> stackAlloc<T extends NativeType>(int numBytes) {
-  final ptr = _lib._stackAlloc<T>(numBytes);
-  return ptr;
-}
+/// Allocates [numBytes] on the ambient module's Emscripten stack.
+Pointer<T> stackAlloc<T extends NativeType>(int numBytes) =>
+    NativeLibrary.instance.stackAlloc<T>(numBytes);
 
 void free(Pointer ptr) {
   ptr.free();
@@ -355,64 +345,31 @@ extension DartBigIntExtension on BigInt {
   }
 }
 
-Uint8List makeUint8List(int length) {
-  var ptr = stackAlloc<Uint8>(length);
-  var wrapper = Uint8ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint8Array;
-  var uint8List = wrapper.toDart;
-  return uint8List;
-}
+Uint8List makeUint8List(int length) =>
+    NativeLibrary.instance.makeUint8List(length);
 
-Int16List makeInt16List(int length) {
-  var ptr = stackAlloc<Int16>(length * 2);
-  var wrapper = Int16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt16Array;
-  var int16List = wrapper.toDart;
-  return int16List;
-}
+Int16List makeInt16List(int length) =>
+    NativeLibrary.instance.makeInt16List(length);
 
-Uint16List makeUint16List(int length) {
-  var ptr = stackAlloc<Uint16>(length * 2);
-  var wrapper = Uint16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint16Array;
-  var uint16List = wrapper.toDart;
-  return uint16List;
-}
+Uint16List makeUint16List(int length) =>
+    NativeLibrary.instance.makeUint16List(length);
 
-IntPtrList makeIntPtrList(int length) {
-  return makeInt32List(length);
-}
+IntPtrList makeIntPtrList(int length) => makeInt32List(length);
 
-Uint32List makeUint32List(int length) {
-  var ptr = stackAlloc<Uint32>(length * 4);
-  var wrapper = Uint32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint32Array;
-  var uint32List = wrapper.toDart;
-  return uint32List;
-}
+Uint32List makeUint32List(int length) =>
+    NativeLibrary.instance.makeUint32List(length);
 
-Int32List makeInt32List(int length) {
-  var ptr = stackAlloc<Int32>(length * 4);
-  var wrapper = Int32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt32Array;
-  var int32List = wrapper.toDart;
-  return int32List;
-}
+Int32List makeInt32List(int length) =>
+    NativeLibrary.instance.makeInt32List(length);
 
-Int64List makeInt64List(int length) {
-  var ptr = stackAlloc<Int64>(length * 8);
-  var bytes = ptr.cast<Uint8>().asTypedList(length * 8);
-  return bytes.buffer.asInt64List(bytes.offsetInBytes, length);
-}
+Int64List makeInt64List(int length) =>
+    NativeLibrary.instance.makeInt64List(length);
 
-Float32List makeFloat32List(int length) {
-  var ptr = stackAlloc<Float32>(length * 4);
-  var wrapper = Float32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat32Array;
-  var f32List = wrapper.toDart;
-  return f32List;
-}
+Float32List makeFloat32List(int length) =>
+    NativeLibrary.instance.makeFloat32List(length);
 
-Float64List makeFloat64List(int length) {
-  var ptr = stackAlloc<Float64>(length * 8);
-  var wrapper = Float64ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat64Array;
-  var f64List = wrapper.toDart;
-  return f64List;
-}
+Float64List makeFloat64List(int length) =>
+    NativeLibrary.instance.makeFloat64List(length);
 
 extension TypedDataExtension<T> on TypedData {
   /// Releases the backing allocation only when this view was created from a
@@ -453,18 +410,109 @@ extension TypedDataExtension<T> on TypedData {
 }
 
 extension type NativeLibrary(JSObject _) implements JSObject {
+  /// The ambient/default library, shared by the extension-based helpers
+  /// below (`String.toNativeUtf8`, `.address`, `makeFloat32List`, ...).
+  ///
+  /// Kept for backward compatibility with single-module apps and with
+  /// bindings files generated before per-module support. Multi-module pages
+  /// should prefer [init] plus the instance-scoped helpers.
   static NativeLibrary get instance => _lib;
 
+  /// Re-points the ambient library ([instance]) at [lib].
+  ///
+  /// Last-write wins, exactly as in previous versions; nothing is
+  /// registered. For the first-wins default-slot policy used by [init] see
+  /// [setDefault].
   static set instance(NativeLibrary lib) {
     _lib = lib;
   }
 
+  /// Initializes the ambient library from the JS global [moduleName].
+  ///
+  /// Legacy single-module entry point; unchanged from previous versions.
+  /// New code (and regenerated bindings) should use [init] instead.
   static void initBindings(String moduleName) {
-    var lib = globalContext.getProperty(moduleName.toJS);
+    _lib = _resolveModule(moduleName);
+  }
+
+  /// Registry of libraries initialized via [init], keyed by module name.
+  ///
+  /// A module name is ffigen_js's analog of ffigen's `ffi-native:
+  /// asset-id` config (`package:ffigen`'s `NativeExternalBindings`): the
+  /// string identifying which loaded native library a set of bindings
+  /// resolves against. Where ffigen resolves an asset id through the native
+  /// assets machinery at load time, ffigen_js resolves a module name by
+  /// reading a JS global of that name - the resolved Emscripten `Module`
+  /// instance stashed there by the page (e.g.
+  /// `window.thermion_dart = await thermion_dart()`).
+  static final Map<String, NativeLibrary> _modules = {};
+
+  static NativeLibrary? _defaultLib;
+
+  /// Initializes (or returns the already-initialized) library for
+  /// [moduleName] and registers it under that name.
+  ///
+  /// This is the ffigen_js counterpart of constructing ffigen's
+  /// `DynamicLibraryBindings` wrapper (`NativeLibrary(DynamicLibrary)`): it
+  /// resolves the library and returns a handle whose instance-scoped helpers
+  /// ([malloc], [toNativeUtf8], [makeFloat32List], [addressOf], ...) operate
+  /// on that module's heap only. Two modules on one page are two [init]
+  /// calls with different names.
+  ///
+  /// If [makeDefault] is true (the default), the module also claims the
+  /// ambient/default slot ([instance]) used by the legacy extension-based
+  /// helpers. The FIRST module initialized with `makeDefault: true` keeps
+  /// that slot; a later `makeDefault: true` for a different module is
+  /// ignored with a warning instead of silently re-pointing every ambient
+  /// helper at the wrong heap. Initialize secondary modules with
+  /// `makeDefault: false`.
+  static NativeLibrary init(String moduleName, {bool makeDefault = true}) {
+    final lib = _modules[moduleName] ?? _resolveModule(moduleName);
+    _modules[moduleName] = lib;
+    if (makeDefault) setDefault(lib);
+    return lib;
+  }
+
+  /// Returns the library registered under [moduleName] by [init].
+  static NativeLibrary byName(String moduleName) {
+    final lib = _modules[moduleName];
     if (lib == null) {
-      throw Exception("Failed to find JS module \${moduleName}");
+      throw StateError(
+          "No JS module registered under the name '$moduleName'. "
+          'Call NativeLibrary.init(...) first.');
     }
-    _lib = lib as NativeLibrary;
+    return lib;
+  }
+
+  /// Makes [lib] the ambient/default module for the legacy helpers.
+  ///
+  /// First module wins: if a different module already holds the default
+  /// slot, this call is ignored with a warning rather than re-pointing the
+  /// ambient helpers at another heap. To deliberately change the default at
+  /// runtime, assign [instance] instead.
+  static void setDefault(NativeLibrary lib) {
+    final incumbent = _defaultLib;
+    if (incumbent != null && !_objectIs(incumbent, lib)) {
+      developer.log(
+        "NativeLibrary.setDefault ignored: the ambient/default module is "
+        'already claimed by a different module. Initialize secondary modules '
+        "with 'makeDefault: false' (or assign NativeLibrary.instance to "
+        'switch deliberately).',
+        name: 'ffigen_js',
+        level: 900, // WARNING
+      );
+      return;
+    }
+    _defaultLib = lib;
+    _lib = lib;
+  }
+
+  static NativeLibrary _resolveModule(String moduleName) {
+    final lib = globalContext.getProperty(moduleName.toJS);
+    if (lib == null) {
+      throw Exception("Failed to find JS module '$moduleName'");
+    }
+    return lib as NativeLibrary;
   }
 
   @JS('stackAlloc')
@@ -519,6 +567,238 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   external Pointer _emscripten_stack_get_current();
   // ignore: non_constant_identifier_names, unused_element
   external int _emscripten_stack_get_free();
+
+  // -------------------------------------------------------------------------
+  // Instance-scoped (per-module) helpers.
+  //
+  // These mirror the ambient library-wide helpers exported by this file
+  // (`String.toNativeUtf8`, `makeFloat32List`, `TypedData.address`,
+  // `Pointer.asTypedList`, ...) but always operate on THIS module's heap.
+  // The ambient helpers are one-line delegations to these, so there is a
+  // single source of truth. Hand-written code that runs while more than one
+  // module is loaded should call these through the library handle obtained
+  // from [init] (e.g. `NativeLibrary.byName('my_module').makeFloat32List(n)`)
+  // instead of the ambient extensions.
+  // -------------------------------------------------------------------------
+
+  /// Allocates [numBytes] from this module's malloc heap.
+  ///
+  /// The returned pointer is tracked so that [free] (and the ambient
+  /// `Pointer.free`) can release it.
+  Pointer<T> malloc<T extends NativeType>(int numBytes) {
+    final ptr = _malloc<T>(numBytes);
+    _heapAllocations.add(ptr);
+    return ptr;
+  }
+
+  /// Releases a pointer allocated by [malloc] (or the heap copy created by
+  /// [addressOf] for large values).
+  ///
+  /// Untracked pointers - e.g. Emscripten stack allocations returned by
+  /// [stackAlloc] and the `make*List` helpers - are ignored rather than
+  /// passed to the module's free, mirroring `Pointer.free`. Restore the
+  /// stack with [stackRestore] to reclaim those.
+  void free(Pointer ptr) {
+    if (_heapAllocations.contains(ptr)) {
+      _heapAllocations.remove(ptr);
+      _free(ptr);
+    }
+  }
+
+  /// Copies [str] into this module's heap as a NUL-terminated UTF-8 string.
+  Pointer<Char> toNativeUtf8(String str) {
+    var len = _lengthBytesUTF8(str) + 1;
+    var ptr = _stackAlloc<Char>(4 * len);
+    _stringToUTF8(str, ptr, len);
+    return ptr;
+  }
+
+  /// Reads a NUL-terminated UTF-8 string from this module's heap.
+  String utf8ToString(Pointer<Char> ptr) => _UTF8ToString(ptr);
+
+  /// Writes [value] to the UTF-8 string buffer [ptr] in this module's heap.
+  void setNativeUtf8(Pointer<Char> ptr, String value) {
+    var len = _lengthBytesUTF8(value);
+    _stringToUTF8(value, ptr, len);
+  }
+
+  /// Allocates a [Uint8List] view over this module's Emscripten stack.
+  Uint8List makeUint8List(int length) {
+    var ptr = _stackAlloc<Uint8>(length);
+    var wrapper = Uint8ArrayWrapper(HEAPU8.buffer, ptr, length) as JSUint8Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates an [Int16List] view over this module's Emscripten stack.
+  Int16List makeInt16List(int length) {
+    var ptr = _stackAlloc<Int16>(length * 2);
+    var wrapper = Int16ArrayWrapper(HEAPU8.buffer, ptr, length) as JSInt16Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates a [Uint16List] view over this module's Emscripten stack.
+  Uint16List makeUint16List(int length) {
+    var ptr = _stackAlloc<Uint16>(length * 2);
+    var wrapper =
+        Uint16ArrayWrapper(HEAPU8.buffer, ptr, length) as JSUint16Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates a [Uint32List] view over this module's Emscripten stack.
+  Uint32List makeUint32List(int length) {
+    var ptr = _stackAlloc<Uint32>(length * 4);
+    var wrapper =
+        Uint32ArrayWrapper(HEAPU8.buffer, ptr, length) as JSUint32Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates an [Int32List] view over this module's Emscripten stack.
+  Int32List makeInt32List(int length) {
+    var ptr = _stackAlloc<Int32>(length * 4);
+    var wrapper = Int32ArrayWrapper(HEAPU8.buffer, ptr, length) as JSInt32Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates an [IntPtrList] view over this module's Emscripten stack.
+  IntPtrList makeIntPtrList(int length) => makeInt32List(length);
+
+  /// Allocates an [Int64List] view over this module's Emscripten stack.
+  Int64List makeInt64List(int length) {
+    var ptr = _stackAlloc<Int64>(length * 8);
+    final bytes = viewUint8(ptr.cast<Uint8>(), length * 8);
+    return bytes.buffer.asInt64List(bytes.offsetInBytes, length);
+  }
+
+  /// Allocates a [Float32List] view over this module's Emscripten stack.
+  Float32List makeFloat32List(int length) {
+    var ptr = _stackAlloc<Float32>(length * 4);
+    var wrapper =
+        Float32ArrayWrapper(HEAPU8.buffer, ptr, length) as JSFloat32Array;
+    return wrapper.toDart;
+  }
+
+  /// Allocates a [Float64List] view over this module's Emscripten stack.
+  Float64List makeFloat64List(int length) {
+    var ptr = _stackAlloc<Float64>(length * 8);
+    var wrapper =
+        Float64ArrayWrapper(HEAPU8.buffer, ptr, length) as JSFloat64Array;
+    return wrapper.toDart;
+  }
+
+  /// Views [length] bytes of this module's heap at [ptr] as a [Uint8List].
+  Uint8List viewUint8(Pointer<Uint8> ptr, int length) {
+    final wrapper =
+        Uint8ArrayWrapper(HEAPU8.buffer, ptr.addr, length) as JSUint8Array;
+    return wrapper.toDart;
+  }
+
+  /// Views [length] elements of this module's heap at [ptr] as a
+  /// [Uint32List].
+  Uint32List viewUint32(Pointer<Uint32> ptr, int length) {
+    final wrapper =
+        Uint32ArrayWrapper(HEAPU8.buffer, ptr.addr, length) as JSUint32Array;
+    return wrapper.toDart;
+  }
+
+  /// Views [length] elements of this module's heap at [ptr] as a
+  /// [Float32List].
+  Float32List viewFloat32(Pointer<Float32> ptr, int length) {
+    final wrapper =
+        Float32ArrayWrapper(HEAPF32.buffer, ptr.addr, length) as JSFloat32Array;
+    return wrapper.toDart;
+  }
+
+  /// Returns [data]'s address in this module's heap, allocating (and, when
+  /// needed, copying) if [data] is not already backed by this heap.
+  ///
+  /// Mirrors the ambient `TypedData.address` extensions. Values already
+  /// backed by THIS module's heap keep their existing address; values backed
+  /// by plain Dart memory or by ANOTHER module's heap are copied into this
+  /// heap, so it is safe to call across modules. Values of at least 32 KiB
+  /// are malloc-backed (released with [free]) and smaller ones are
+  /// stack-backed, matching the ambient behavior.
+  Pointer<T> addressOf<T extends NativeType>(TypedData data) {
+    switch (data) {
+      case final Uint8List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Uint8ArrayWrapper(HEAPU8.buffer, ptr, list.length) as JSUint8Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Int16List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Int16ArrayWrapper(HEAPU8.buffer, ptr, list.length) as JSInt16Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Uint16List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Uint16ArrayWrapper(HEAPU8.buffer, ptr, list.length) as JSUint16Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Uint32List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Uint32ArrayWrapper(HEAPU8.buffer, ptr, list.length) as JSUint32Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Int32List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Int32ArrayWrapper(HEAPU8.buffer, ptr, list.length) as JSInt32Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Int64List list:
+        final bytes =
+            list.buffer.asUint8List(list.offsetInBytes, list.lengthInBytes);
+        final heapAddress = _wasmHeapAddress<T>(this, data, bytes.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        viewUint8(ptr.cast<Uint8>(), list.lengthInBytes).setAll(0, bytes);
+        return ptr;
+      case final Float32List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Float32ArrayWrapper(HEAPU8.buffer, ptr, list.length)
+                as JSFloat32Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      case final Float64List list:
+        final heapAddress = _wasmHeapAddress<T>(this, data, list.toJS);
+        if (heapAddress != null) return heapAddress;
+        final ptr = _allocFor<T>(data);
+        (Float64ArrayWrapper(HEAPU8.buffer, ptr, list.length)
+                as JSFloat64Array)
+            .toDart
+            .setRange(0, list.length, list);
+        return ptr;
+      default:
+        throw UnimplementedError(
+            'addressOf is not supported for ${data.runtimeType}');
+    }
+  }
+
+  /// Allocates memory for [data]: on this module's stack when small, from
+  /// this module's malloc heap (tracked, see [free]) when large.
+  Pointer<T> _allocFor<T extends NativeType>(TypedData data) {
+    if (data.lengthInBytes < 32 * 1024) {
+      return _stackAlloc<T>(data.lengthInBytes);
+    }
+    return malloc<T>(data.lengthInBytes);
+  }
 }
 
 abstract base class Struct extends NativeType {
@@ -540,19 +820,6 @@ abstract base class Union extends NativeType {
 }
 
 final _heapAllocations = <Pointer>{};
-
-Pointer<T> _getPointer<T extends NativeType>(TypedData data) {
-  late Pointer<T> ptr;
-
-  if (data.lengthInBytes < 32 * 1024) {
-    ptr = stackAlloc(data.lengthInBytes).cast<T>();
-  } else {
-    ptr = malloc<T>(data.lengthInBytes);
-    _heapAllocations.add(ptr);
-  }
-
-  return ptr;
-}
 
 extension JSUint8BackingBuffer on JSUint8Array {
   @JS('buffer')
@@ -593,18 +860,18 @@ extension type _JSTypedArrayView._(JSObject _) implements JSObject {
 @JS('Object.is')
 external bool _objectIs(JSObject a, JSObject b);
 
-/// Returns [data]'s existing Emscripten heap address, if it is already backed
-/// by that heap.
+/// Returns [data]'s existing address in [lib]'s heap, if it is already
+/// backed by that heap.
 ///
-/// Checking the backing buffer also recognizes views derived from an allocated
-/// list, such as `floatList.asUint8List()`.
+/// Checking the backing buffer also recognizes views derived from an
+/// allocated list, such as `floatList.asUint8List()`.
 Pointer<T>? _wasmHeapAddress<T extends NativeType>(
-    TypedData data, JSObject jsArray) {
+    NativeLibrary lib, TypedData data, JSObject jsArray) {
   if (data.lengthInBytes == 0) {
     return Pointer<T>(0);
   }
   final view = _JSTypedArrayView._(jsArray);
-  if (_objectIs(view.buffer, NativeLibrary.instance.HEAPU8.buffer)) {
+  if (_objectIs(view.buffer, lib.HEAPU8.buffer)) {
     return Pointer<T>(view.byteOffset);
   }
   return null;
@@ -650,29 +917,19 @@ extension type Float64ArrayWrapper._(JSObject _) implements JSObject {
 }
 
 extension Uint8ListExtension on Uint8List {
-  Pointer<Uint8> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint8>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint8>(this);
-    final wrapper =
-        Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint8Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Uint8> get address =>
+      NativeLibrary.instance.addressOf<Uint8>(this);
 }
 
 extension Float32ListExtension on Float32List {
-  Pointer<Float32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Float32>(this);
-    final wrapper =
-        Float32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSFloat32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Float32> get address =>
+      NativeLibrary.instance.addressOf<Float32>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -680,16 +937,11 @@ extension Float32ListExtension on Float32List {
 }
 
 extension Int16ListExtension on Int16List {
-  Pointer<Int16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int16>(this);
-    final wrapper = Int16ArrayWrapper(
-        NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSInt16Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Int16> get address =>
+      NativeLibrary.instance.addressOf<Int16>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -697,16 +949,11 @@ extension Int16ListExtension on Int16List {
 }
 
 extension Uint16ListExtension on Uint16List {
-  Pointer<Uint16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint16>(this);
-    final wrapper =
-        Uint16ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint16Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Uint16> get address =>
+      NativeLibrary.instance.addressOf<Uint16>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -714,16 +961,11 @@ extension Uint16ListExtension on Uint16List {
 }
 
 extension UInt32ListExtension on Uint32List {
-  Pointer<Uint32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint32>(this);
-    final wrapper =
-        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Uint32> get address =>
+      NativeLibrary.instance.addressOf<Uint32>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -731,16 +973,11 @@ extension UInt32ListExtension on Uint32List {
 }
 
 extension Int32ListExtension on Int32List {
-  Pointer<Int32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int32>(this);
-    final wrapper =
-        Int32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSInt32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Int32> get address =>
+      NativeLibrary.instance.addressOf<Int32>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -748,15 +985,11 @@ extension Int32ListExtension on Int32List {
 }
 
 extension Int64ListExtension on Int64List {
-  Pointer<Int64> get address {
-    final bytes = buffer.asUint8List(offsetInBytes, lengthInBytes);
-    final jsArray = bytes.toJS;
-    final heapAddress = _wasmHeapAddress<Int64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int64>(this);
-    ptr.cast<Uint8>().asTypedList(lengthInBytes).setAll(0, bytes);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Int64> get address =>
+      NativeLibrary.instance.addressOf<Int64>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -764,16 +997,11 @@ extension Int64ListExtension on Int64List {
 }
 
 extension Float64ListExtension on Float64List {
-  Pointer<Float64> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Float64>(this);
-    final wrapper =
-        Float64ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSFloat64Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  /// Address of this view in the *ambient* module's heap. When several
+  /// modules are loaded, call the instance-scoped `addressOf` on the
+  /// right [NativeLibrary] (from [NativeLibrary.init]) instead.
+  Pointer<Float64> get address =>
+      NativeLibrary.instance.addressOf<Float64>(this);
 
   Uint8List asUint8List() {
     return address.cast<Uint8>().asTypedList(lengthInBytes);
@@ -781,33 +1009,18 @@ extension Float64ListExtension on Float64List {
 }
 
 extension AsUint8List on Pointer<Uint8> {
-  Uint8List asTypedList(int length) {
-    final start = addr;
-    final wrapper =
-        Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length) as JSUint8Array;
-    return wrapper.toDart;
-  }
+  Uint8List asTypedList(int length) =>
+      NativeLibrary.instance.viewUint8(this, length);
 }
 
 extension AsUint32List on Pointer<Uint32> {
-  Uint32List asTypedList(int length) {
-    final start = addr;
-    final wrapper =
-        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length) as JSUint32Array;
-    return wrapper.toDart;
-  }
+  Uint32List asTypedList(int length) =>
+      NativeLibrary.instance.viewUint32(this, length);
 }
 
 extension AsFloat32List on Pointer<Float> {
-  Float32List asTypedList(int length) {
-    final start = addr;
-    final wrapper = Float32ArrayWrapper(
-      NativeLibrary.instance.HEAPF32.buffer,
-      start,
-      length,
-    ) as JSFloat32Array;
-    return wrapper.toDart;
-  }
+  Float32List asTypedList(int length) =>
+      NativeLibrary.instance.viewFloat32(cast<Float32>(), length);
 }
 
 typedef IntPtrList = Int32List;

@@ -663,3 +663,24 @@ Version? versionExtractor(dynamic yamlVersion) {
   if (versionString == null) return null;
   return Version.parse(versionString);
 }
+
+/// Mirrors `package:ffigen`'s `ffiNativeExtractor`: parses the
+/// `ffi-native: { asset-id: ... }` config section into an [FfiNativeConfig].
+FfiNativeConfig ffiNativeExtractor(Logger logger, dynamic yamlConfig) {
+  final yamlMap = yamlConfig as Map?;
+
+  // Use the old 'assetId' key if present but give a deprecation warning.
+  if (yamlMap != null &&
+      !yamlMap.containsKey(strings.ffiNativeAsset) &&
+      yamlMap.containsKey('assetId')) {
+    logger.warning("DEPRECATION WARNING: use 'asset-id' instead of 'assetId'");
+    return FfiNativeConfig(
+      enabled: true,
+      assetId: yamlMap['assetId'] as String?,
+    );
+  }
+  return FfiNativeConfig(
+    enabled: true,
+    assetId: yamlMap?[strings.ffiNativeAsset] as String?,
+  );
+}

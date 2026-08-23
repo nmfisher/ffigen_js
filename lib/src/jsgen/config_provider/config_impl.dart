@@ -135,6 +135,9 @@ class ConfigImpl implements Config {
   final String? wrapperDocComment;
 
   @override
+  final FfiNativeConfig ffiNativeConfig;
+
+  @override
   final String? preamble;
 
   @override
@@ -212,6 +215,7 @@ class ConfigImpl implements Config {
     required this.protocolModuleFunc,
     required this.wrapperName,
     required this.wrapperDocComment,
+    required this.ffiNativeConfig,
     required this.preamble,
     required this.useDartHandle,
     required this.silenceEnumWarning,

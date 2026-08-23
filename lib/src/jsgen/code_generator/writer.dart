@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 
 import '../code_generator.dart';
+import '../config_provider/config_types.dart';
 import '../strings.dart' as strings;
 import 'utils.dart';
 
@@ -86,6 +87,11 @@ class Writer {
 
   final bool silenceEnumWarning;
 
+  /// From the `ffi-native:` config section. The `asset-id` (if any) is the
+  /// JS module name baked into the generated `initBindings` as its default
+  /// argument - ffigen_js's analog of ffigen's native-assets asset id.
+  final FfiNativeConfig ffiNativeConfig;
+
   Writer({
     required this.bindings,
     required this.typeBindings,
@@ -95,6 +101,7 @@ class Writer {
     this.header,
     required this.silenceEnumWarning,
     required this.nativeEntryPoints,
+    this.ffiNativeConfig = const FfiNativeConfig(enabled: false),
   }) {
     final globalLevelNameSet = bindings.map((e) => e.name).toSet();
     final wrapperLevelNameSet = bindings.map((e) => e.name).toSet();
@@ -202,23 +209,50 @@ class Writer {
       }
       // Write wrapper classs.
 
+      // Bake the `ffi-native: asset-id:` module name (if configured) into
+      // initBindings as its default argument - the ffigen_js analog of
+      // ffigen baking the asset id into `@DefaultAsset`.
+      final assetId = ffiNativeConfig.assetId;
+      final bakedModuleName = assetId == null
+          ? '''
+    if (moduleName == null) {
+      throw ArgumentError(
+          'No module name was provided and none was baked in at generation '
+          "time. Pass one to initBindings, or set 'ffi-native: asset-id:' "
+          'in the ffigen_js config.');
+    }
+'''
+          : "    moduleName ??= '$assetId';\n";
+
       s.write('''
 import 'dart:typed_data';
 import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
 import 'package:ffigen_js/ffigen_js.dart';
 export 'package:ffigen_js/ffigen_js.dart';
 
-extension type GeneratedBindings(NativeLibrary _) implements JSObject {
+extension type GeneratedBindings(NativeLibrary _) implements NativeLibrary {
 
-  static GeneratedBindings get instance => NativeLibrary.instance as GeneratedBindings;
-  
-  static void initBindings(String moduleName) {
-    var lib = globalContext.getProperty(moduleName.toJS);
-    if (lib == null) {
-      throw Exception("Failed to find JS module \${moduleName}");
-    }
-    NativeLibrary.instance = lib as NativeLibrary;
+  static GeneratedBindings? _instance;
+
+  /// The module these bindings resolve against. Falls back to the ambient
+  /// library ([NativeLibrary.instance]) until [initBindings] has been
+  /// called, so single-module pages set up the legacy way keep working.
+  static GeneratedBindings get instance =>
+      _instance ?? (NativeLibrary.instance as GeneratedBindings);
+
+  /// Re-points these bindings at [lib] without touching the ambient library.
+  static set instance(GeneratedBindings lib) => _instance = lib;
+
+  /// Initializes these bindings against the Emscripten module published as
+  /// the JS global [moduleName].${assetId == null ? '' : " Defaults to '$assetId', from the 'ffi-native: asset-id:' config."}
+  ///
+  /// If [makeDefault] is true (the default), the module also claims the
+  /// ambient/default slot. The first module to claim it wins; initialize
+  /// secondary modules with makeDefault: false.
+  static void initBindings([String? moduleName, bool makeDefault = true]) {
+$bakedModuleName    _instance =
+        NativeLibrary.init(moduleName, makeDefault: makeDefault)
+            as GeneratedBindings;
   }
 
 ''');

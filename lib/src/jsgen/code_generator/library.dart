@@ -33,6 +33,8 @@ class Library {
     List<LibraryImport>? libraryImports,
     bool silenceEnumWarning = false,
     List<String> nativeEntryPoints = const <String>[],
+    FfiNativeConfig ffiNativeConfig =
+        const FfiNativeConfig(enabled: false),
   }) {
     _findBindings(bindings, sort);
 
@@ -71,6 +73,7 @@ class Library {
       additionalImports: libraryImports,
       silenceEnumWarning: silenceEnumWarning,
       nativeEntryPoints: nativeEntryPoints,
+      ffiNativeConfig: ffiNativeConfig,
     );
   }
 
