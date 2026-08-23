@@ -1,0 +1,7 @@
+name: multi_module_smoke
+publish_to: none
+environment:
+  sdk: ^3.4.0
+dependencies:
+  ffigen_js:
+    path: ../../
