@@ -31,9 +31,16 @@ Set<Binding> parseTranslationUnit(clang_types.CXCursor translationUnitCursor) {
             break;
           case clang_types.CXCursorKind.CXCursor_StructDecl:
           case clang_types.CXCursorKind.CXCursor_UnionDecl:
-          case clang_types.CXCursorKind.CXCursor_EnumDecl:
           case clang_types.CXCursorKind.CXCursor_MacroDefinition:
             saveMacroDefinition(cursor);
+            break;
+          case clang_types.CXCursorKind.CXCursor_EnumDecl:
+            // Extract enums through the type extractor (as upstream ffigen
+            // does) so they are emitted even when no included function
+            // signature references them. Structs and unions stay on the
+            // macro-deferral path: the JS bindings only emit those as
+            // signature dependencies.
+            addToBindings(bindings, _getCodeGenTypeFromCursor(cursor));
             break;
           case clang_types.CXCursorKind.CXCursor_VarDecl:
             addToBindings(bindings, parseVarDeclaration(cursor));
@@ -66,6 +73,11 @@ void addToBindings(Set<Binding> bindings, Binding? b) {
     // This is a set, and hence will not have duplicates.
     bindings.add(b);
   }
+}
+
+BindingType? _getCodeGenTypeFromCursor(clang_types.CXCursor cursor) {
+  final t = getCodeGenType(cursor.type());
+  return t is BindingType ? t : null;
 }
 
 /// Visits all cursors and builds a map of usr and [clang_types.CXCursor].
