@@ -16,6 +16,11 @@ void main(List<String> args) async {
 
   assert(returns_bool() == false);
 
+  // UnreferencedEnum appears in no function signature; the generator must
+  // still emit it and evaluate its enumerators.
+  assert(UnreferencedEnum.UNREFERENCED_ENUM_B.value == 2);
+  assert(UnreferencedEnum.UNREFERENCED_ENUM_C.value == 4);
+
   var structWithArray = return_struct_with_array_by_value();
 
   assert(structWithArray.array1[0] == 10.0, structWithArray.array1[0]);

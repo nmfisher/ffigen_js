@@ -125,12 +125,21 @@ typedef enum MyEnum MyEnum;
 MyEnum return_enum();
 int accept_enum(MyEnum val);
 
-enum MyEnumAsInt { 
+enum MyEnumAsInt {
     ENUM_AS_INT_VAL1,
     ENUM_AS_INT_VAL2,
 };
 
 enum MyEnumAsInt return_enum_as_int();
+
+// Never referenced by any function signature. The generator must still emit
+// it (regression: enums used purely as bitmask constants were dropped).
+enum UnreferencedEnum {
+    UNREFERENCED_ENUM_A = 0,
+    UNREFERENCED_ENUM_B = 1 << 1,
+    UNREFERENCED_ENUM_C = 1 << 2
+};
+typedef enum UnreferencedEnum UnreferencedEnum;
 
 uint64_t bigint_method(uint64_t number);
 size_t size_tmethod(size_t number);
