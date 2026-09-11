@@ -92,8 +92,10 @@ For `Int8List`, `Uint8List`, `Int16List`, `Uint16List`, `Int32List`, `Int64List`
 backed by Emscripten memory, `.address` returns a deferred pointer without
 allocating Wasm memory. A generated function configured as `leaf` materializes
 that pointer for the native call, copies native writes back, and releases the
-temporary memory afterwards, including when the call throws. Small call inputs
-use the Emscripten stack; larger inputs use the heap. Call it in the same form
+temporary memory afterwards, including when the call throws. All temporary
+inputs share one allocation: the Emscripten stack when their combined aligned
+size is at most 32 KiB, otherwise the heap. Aliased views preserve their relative
+offsets and alignment. Call it in the same form
 as a `dart:ffi` leaf native function:
 
 ```dart

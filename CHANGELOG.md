@@ -4,9 +4,11 @@
   matching their `dart:ffi` usage. Generated leaf function wrappers materialize
   them in Wasm memory, copy native writes back, and always release the call
   scope.
-- Uses the Emscripten stack for small call scopes and temporary heap allocations
-  for larger inputs. TypedData views sharing a backing buffer also share their
-  native allocation, preserving aliases and overlapping writes.
+- Uses one temporary allocation per call: the Emscripten stack for scopes up to
+  32 KiB (including alignment), otherwise the heap. TypedData views sharing a
+  backing buffer preserve their aliases, alignment, and overlapping writes.
+- Keeps structs returned by value outside the temporary scope so stack cleanup
+  preserves their caller-managed lifetime.
 - Honors `functions.leaf` when generating JavaScript bindings, using it to
   identify the native calls where deferred TypedData addresses are valid.
 - Keeps addresses of Emscripten-backed lists and explicitly allocated pointers

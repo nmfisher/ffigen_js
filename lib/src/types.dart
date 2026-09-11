@@ -584,8 +584,7 @@ final class _TypedDataRange {
   final ByteBuffer buffer;
   int start;
   int end;
-  Pointer<Uint8>? pointer;
-  bool heapAllocated = false;
+  int allocationOffset = 0;
 
   _TypedDataRange(this.buffer, this.start, this.end);
 
@@ -605,6 +604,7 @@ final class NativeCallScope {
 
   final _ranges = <_TypedDataRange>[];
   final _pointerRanges = <_DeferredTypedDataPointer, _TypedDataRange>{};
+  Pointer<Uint8>? _allocation;
   Pointer<Void>? _stackMarker;
   bool _closed = false;
 
@@ -643,21 +643,31 @@ final class NativeCallScope {
 
     if (_ranges.isEmpty) return;
 
-    _stackMarker = _lib.stackSave();
-    var stackBytes = 0;
+    var totalBytes = 0;
     for (final range in _ranges) {
-      // Emscripten aligns stack allocations to 16 bytes. Account for the
-      // aligned size so a collection of small views cannot exceed the limit.
-      final alignedLength = (range.length + 15) & ~15;
-      final useStack =
-          stackBytes + alignedLength <= NativeCallScope._maximumStackBytes;
-      final pointer = useStack
-          ? stackAlloc<Uint8>(range.length)
-          : malloc<Uint8>(range.length);
-      range.pointer = pointer;
-      range.heapAllocated = !useStack;
-      if (useStack) stackBytes += alignedLength;
-      pointer.asTypedList(range.length).setAll(0, range.source);
+      // Preserve the original alignment of every view, including mixed-type
+      // aliases, and align each range within the single temporary allocation.
+      range.start &= ~15;
+      range.allocationOffset = totalBytes;
+      totalBytes += (range.length + 15) & ~15;
+    }
+
+    if (totalBytes <= _maximumStackBytes) {
+      _stackMarker = _lib.stackSave();
+      _allocation = stackAlloc<Uint8>(totalBytes);
+    } else {
+      // The scope owns this allocation directly; it is not a public malloc.
+      final allocation = _lib._malloc<Uint8>(totalBytes);
+      if (allocation.addr == 0) {
+        throw StateError(
+            'Could not allocate $totalBytes bytes for native call.');
+      }
+      _allocation = allocation;
+    }
+    for (final range in _ranges) {
+      (_allocation! + range.allocationOffset)
+          .asTypedList(range.length)
+          .setAll(0, range.source);
     }
   }
 
@@ -666,7 +676,8 @@ final class NativeCallScope {
     if (!pointer._isDeferred) return pointer;
     final deferred = pointer._deferred;
     final range = _pointerRanges[deferred]!;
-    final address = range.pointer!.addr +
+    final address = _allocation!.addr +
+        range.allocationOffset +
         deferred.data.offsetInBytes -
         range.start +
         deferred.additionalByteOffset;
@@ -681,20 +692,19 @@ final class NativeCallScope {
     try {
       if (copyBack) {
         for (final range in _ranges) {
-          final pointer = range.pointer;
-          if (pointer != null) {
-            range.source.setAll(0, pointer.asTypedList(range.length));
-          }
+          range.source.setAll(
+            0,
+            (_allocation! + range.allocationOffset).asTypedList(range.length),
+          );
         }
       }
     } finally {
-      try {
-        for (final range in _ranges) {
-          if (range.heapAllocated) range.pointer?.free();
-        }
-      } finally {
-        final stackMarker = _stackMarker;
-        if (stackMarker != null) _lib.stackRestore(stackMarker);
+      final stackMarker = _stackMarker;
+      if (stackMarker != null) {
+        _lib.stackRestore(stackMarker);
+      } else {
+        final allocation = _allocation;
+        if (allocation != null) _lib._free(allocation);
       }
     }
   }

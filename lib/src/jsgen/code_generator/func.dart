@@ -267,13 +267,13 @@ class Func extends Binding {
         .map((p) => p.name)
         .toList();
     final scopedPointerArguments = isLeaf ? pointerArguments : const <String>[];
-    final scopedPointerArgumentNames = scopedPointerArguments.toSet();
+    final scopeName = paramNamer.makeUnique('scope');
     final invokeInteropArgsString = interopArguments.map((p) {
-      final scopedArgument = scopedPointerArgumentNames.contains(p.name)
-          ? 'scope.addressOf(${p.name})'
-          : pointerArguments.contains(p.name)
-              ? 'rawPointer(${p.name})'
-              : p.name;
+      final scopedArgument = pointerArguments.contains(p.name)
+          ? isLeaf
+              ? '$scopeName.addressOf(${p.name})'
+              : 'rawPointer(${p.name})'
+          : p.name;
 
       if (p.type.baseType is NativeFunc) {
         return '$scopedArgument.cast()';
@@ -310,19 +310,21 @@ class Func extends Binding {
     if (writeModuleBinding) {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
-    } else if (scopedPointerArguments.isNotEmpty) {
-      s.write('''$userReturnType $userFunctionName($userArgsString) {
-              return withNativeCall(<Pointer>[${scopedPointerArguments.join(',')}], (scope) {
-                ${interopArgumentConstructors.join("\n")}
-                final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
-                ${interopReturnTypeConstructors.join("\n")}
-              });
-  }''');
     } else {
-      s.write('''$userReturnType $userFunctionName($userArgsString) {
-              ${interopArgumentConstructors.join("\n")}
+      final invocation = '''
               final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
               ${interopReturnTypeConstructors.join("\n")}
+''';
+      final body = scopedPointerArguments.isEmpty
+          ? invocation
+          : '''return withNativeCall(<Pointer>[${scopedPointerArguments.join(',')}], ($scopeName) {
+                $invocation
+              });''';
+      // Return structs must outlive the temporary pointer scope. Allocate them
+      // before its stack marker is saved, preserving the caller's stack lifetime.
+      s.write('''$userReturnType $userFunctionName($userArgsString) {
+              ${interopArgumentConstructors.join("\n")}
+              $body
   }''');
     }
 

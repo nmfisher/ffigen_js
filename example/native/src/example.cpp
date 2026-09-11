@@ -113,6 +113,17 @@ bool EMSCRIPTEN_KEEPALIVE verify_typed_data_alias(uint8_t *data, uint8_t *alias)
     return alias[0] == 77;
 }
 
+bool EMSCRIPTEN_KEEPALIVE verify_typed_data_alignment(uint8_t *scope, uint32_t *words) {
+    if ((uintptr_t)words % alignof(uint32_t) != 0) return false;
+    if ((uint8_t *)words != scope + 3) return false;
+    words[0] = 123456;
+    return true;
+}
+
+MyStruct EMSCRIPTEN_KEEPALIVE return_struct_for_address_test(const uint8_t *scope) {
+    return MyStruct{(float)scope[0], nullptr, 42};
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }

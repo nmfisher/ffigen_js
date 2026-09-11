@@ -321,6 +321,53 @@ void main(List<String> args) async {
   assert(aliasedData[1] == 77 && aliasedView[0] == 77,
       'An aliased native write was not copied back to the Dart buffer');
 
+  final mixedBuffer = Uint8List(16);
+  final mixedBytes = Uint8List.view(mixedBuffer.buffer, 1, 7);
+  final mixedWords = Uint32List.view(mixedBuffer.buffer, 4, 1);
+  assert(verify_typed_data_alignment(mixedBytes.address, mixedWords.address),
+      'Mixed-type aliases lost their alignment or relative offsets');
+  assert(
+      mixedWords[0] == 123456, 'An aligned native write was not copied back');
+
+  // The combined aligned size determines where the entire scope is allocated.
+  // Both paths must copy back and release memory even when the body throws.
+  for (final length in [16 * 1024, 16 * 1024 + 1]) {
+    final first = Uint8List(length);
+    final second = Uint8List(length);
+    final firstPointer = first.address;
+    final secondPointer = second.address;
+    final marker = NativeLibrary.instance.stackSave();
+    final failure = StateError('native call failed');
+    try {
+      withNativeCall([firstPointer, secondPointer], (scope) {
+        final firstRaw = scope.addressOf(firstPointer);
+        final secondRaw = scope.addressOf(secondPointer);
+        final onStack = length == 16 * 1024;
+        assert(pointer_is_on_stack(firstRaw) == onStack);
+        assert(pointer_is_on_stack(secondRaw) == onStack);
+        assert(secondRaw.addr - firstRaw.addr == ((length + 15) & ~15),
+            'Independent ranges were not placed in one aligned block');
+        firstRaw.asTypedList(1)[0] = 21;
+        secondRaw.asTypedList(1)[0] = 22;
+        throw failure;
+      });
+    } on StateError catch (error) {
+      assert(identical(error, failure));
+    }
+    assert(first[0] == 21 && second[0] == 22,
+        'A throwing call did not copy back both ranges');
+    assert(NativeLibrary.instance.stackSave().addr == marker.addr,
+        'A throwing call did not restore the stack');
+  }
+
+  final resultMarker = NativeLibrary.instance.stackSave();
+  final scopedResult =
+      return_struct_for_address_test(Uint8List.fromList([9]).address);
+  makeUint8List(128).fillRange(0, 128, 0);
+  assert(scopedResult.a == 9 && scopedResult.c == 42,
+      'Restoring the temporary scope invalidated the returned struct');
+  NativeLibrary.instance.stackRestore(resultMarker);
+
   // A deferred address carries no Wasm allocation and can be materialized
   // independently by each generated call.
   final reusableData = Uint8List.fromList([6, 7]);

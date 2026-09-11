@@ -97,4 +97,61 @@ void main() {
             'rawPointer(data))'));
     expect(output, isNot(contains('withNativeCall')));
   });
+
+  test('scope parameter does not shadow the generated call scope', () {
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.int32),
+      parameters: [
+        Parameter(
+          name: 'scope',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+      isLeaf: true,
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    expect(output, contains('(scope1)'));
+    expect(output, contains('_readBytes(scope1.addressOf(scope))'));
+  });
+
+  test('returned structs are allocated before the temporary call scope', () {
+    final result = Struct(name: 'Result', members: [
+      Member(name: 'value', type: NativeType(SupportedNativeType.int32)),
+    ]);
+    final function = Func(
+      name: 'readResult',
+      returnType: result,
+      parameters: [
+        Parameter(
+          name: 'data',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readResult',
+      originalName: 'readResult',
+      isLeaf: true,
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [result],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    final allocation = output.indexOf('final Result_out = Result.stackAlloc()');
+    expect(allocation, greaterThanOrEqualTo(0));
+    expect(allocation, lessThan(output.indexOf('return withNativeCall(')));
+    expect(output, contains('return Result_out.toDart()'));
+  });
 }

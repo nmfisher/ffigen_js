@@ -11,6 +11,7 @@ functions:
       - 'verify_typed_data_.*'
       - 'sum_bytes'
       - 'pointer_is_on_stack'
+      - 'return_struct_for_address_test'
 ffi-native:
   asset-id: package:ffigen_js_example/ffigen_js_example.dart
 enums:
