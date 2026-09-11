@@ -27,13 +27,14 @@ void main() {
     expect(externalBinding, greaterThanOrEqualTo(0));
     expect(publicWrapper, greaterThan(externalBinding));
     expect(output, isNot(contains('class NativeLibrary')));
+    expect(output, isNot(contains('withNativeCall')));
     expect(
       output,
       contains('GeneratedBindings.instance._addOne(value)'),
     );
   });
 
-  test('pointer arguments are materialized in a native call scope', () {
+  test('pointer arguments pass directly to the JS binding', () {
     final uint8 = NativeType(SupportedNativeType.uint8);
     final int32 = NativeType(SupportedNativeType.int32);
     final function = Func(
@@ -46,7 +47,6 @@ void main() {
       ],
       usr: 'c:@F@readBytes',
       originalName: 'readBytes',
-      isLeaf: true,
     );
     final writer = Writer(
       bindings: [function],
@@ -58,21 +58,18 @@ void main() {
 
     final output = writer.generate();
 
-    expect(
-      output,
-      contains('withNativeCall(<Pointer>[data,other], (scope)'),
-    );
+    expect(output, isNot(contains('withNative')));
     expect(
       output,
       contains(
         'GeneratedBindings.instance._readBytes('
-        'scope.addressOf(data),scope.addressOf(other),length)',
+        'data,other,length)',
       ),
     );
     expect(output, isNot(contains('releaseTemporaryTypedDataAddress')));
   });
 
-  test('non-leaf pointer arguments require an existing Wasm address', () {
+  test('void functions pass pointers directly', () {
     final uint8 = NativeType(SupportedNativeType.uint8);
     final function = Func(
       name: 'readBytes',
@@ -94,11 +91,11 @@ void main() {
     expect(
         output,
         contains('GeneratedBindings.instance._readBytes('
-            'rawPointer(data))'));
-    expect(output, isNot(contains('withNativeCall')));
+            'data)'));
+    expect(output, isNot(contains('withNative')));
   });
 
-  test('scope parameter does not shadow the generated call scope', () {
+  test('scope parameter passes through without internal names', () {
     final function = Func(
       name: 'readBytes',
       returnType: NativeType(SupportedNativeType.int32),
@@ -110,7 +107,6 @@ void main() {
       ],
       usr: 'c:@F@readBytes',
       originalName: 'readBytes',
-      isLeaf: true,
     );
     final output = Writer(
       bindings: [function],
@@ -120,11 +116,11 @@ void main() {
       nativeEntryPoints: [],
     ).generate();
 
-    expect(output, contains('(scope1)'));
-    expect(output, contains('_readBytes(scope1.addressOf(scope))'));
+    expect(output, contains('_readBytes(scope)'));
+    expect(output, isNot(contains('scope1')));
   });
 
-  test('returned structs are allocated before the temporary call scope', () {
+  test('returned structs retain caller-managed stack ownership', () {
     final result = Struct(name: 'Result', members: [
       Member(name: 'value', type: NativeType(SupportedNativeType.int32)),
     ]);
@@ -139,7 +135,6 @@ void main() {
       ],
       usr: 'c:@F@readResult',
       originalName: 'readResult',
-      isLeaf: true,
     );
     final output = Writer(
       bindings: [function],
@@ -151,7 +146,8 @@ void main() {
 
     final allocation = output.indexOf('final Result_out = Result.stackAlloc()');
     expect(allocation, greaterThanOrEqualTo(0));
-    expect(allocation, lessThan(output.indexOf('return withNativeCall(')));
+    expect(allocation, lessThan(output.indexOf('final result =')));
+    expect(output, isNot(contains('withNative')));
     expect(output, contains('return Result_out.toDart()'));
   });
 }

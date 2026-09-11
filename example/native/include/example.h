@@ -84,6 +84,7 @@ bool pointer_is_on_stack(const uint8_t *data);
 bool verify_typed_data_alias(uint8_t *data, uint8_t *alias);
 bool verify_typed_data_alignment(uint8_t *scope, uint32_t *words);
 MyStruct return_struct_for_address_test(const uint8_t *scope);
+void update_bytes_with_callback(uint8_t *data, void (*callback)());
 
 INTTYPE sum_with_typedef(INTTYPE a, INTTYPE b);
 int subtract(int *a, int b);

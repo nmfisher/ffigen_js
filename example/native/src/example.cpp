@@ -124,6 +124,12 @@ MyStruct EMSCRIPTEN_KEEPALIVE return_struct_for_address_test(const uint8_t *scop
     return MyStruct{(float)scope[0], nullptr, 42};
 }
 
+void EMSCRIPTEN_KEEPALIVE update_bytes_with_callback(uint8_t *data, void (*callback)()) {
+    data[0] = 11;
+    callback();
+    data[0] += 11;
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }

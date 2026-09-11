@@ -32,7 +32,6 @@ import 'writer.dart';
 class Func extends Binding {
   final FunctionType functionType;
   final bool exposeFunctionTypedefs;
-  final bool isLeaf;
 
   /// Contains typealias for function type if [exposeFunctionTypedefs] is true.
   Typealias? _exposedFunctionTypealias;
@@ -46,7 +45,6 @@ class Func extends Binding {
       List<Parameter>? parameters,
       List<Parameter>? varArgParameters,
       this.exposeFunctionTypedefs = false,
-      this.isLeaf = false,
       super.isInternal,
       required super.usr,
       required super.originalName})
@@ -260,31 +258,17 @@ class Func extends Binding {
     final interopArgsString = interopArguments
         .map((p) => '${p.type.getInteropDartType(w)} ${p.name},\n')
         .join('');
-    final pointerArguments = userArguments
-        .where(
-          (p) => p.type is PointerType || p.type.typealiasType is PointerType,
-        )
-        .map((p) => p.name)
-        .toList();
-    final scopedPointerArguments = isLeaf ? pointerArguments : const <String>[];
-    final scopeName = paramNamer.makeUnique('scope');
     final invokeInteropArgsString = interopArguments.map((p) {
-      final scopedArgument = pointerArguments.contains(p.name)
-          ? isLeaf
-              ? '$scopeName.addressOf(${p.name})'
-              : 'rawPointer(${p.name})'
-          : p.name;
-
       if (p.type.baseType is NativeFunc) {
-        return '$scopedArgument.cast()';
+        return '${p.name}.cast()';
       }
 
       if (p.type is PointerType) {
         if ((p.type.baseType is Struct)) {
-          return '$scopedArgument.cast()';
+          return '${p.name}.cast()';
         }
 
-        return scopedArgument;
+        return p.name;
       }
 
       if (p.type is EnumClass) {
@@ -301,7 +285,7 @@ class Func extends Binding {
 
       if (p.type is Typealias && p.type.typealiasType is PointerType) {
         var pointerType = p.type.typealiasType as PointerType;
-        return '$scopedArgument as ${pointerType.getWasmInteropType(w)}';
+        return '${p.name} as ${pointerType.getWasmInteropType(w)}';
       }
 
       return '${p.name}';
@@ -311,20 +295,10 @@ class Func extends Binding {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
     } else {
-      final invocation = '''
-              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
-              ${interopReturnTypeConstructors.join("\n")}
-''';
-      final body = scopedPointerArguments.isEmpty
-          ? invocation
-          : '''return withNativeCall(<Pointer>[${scopedPointerArguments.join(',')}], ($scopeName) {
-                $invocation
-              });''';
-      // Return structs must outlive the temporary pointer scope. Allocate them
-      // before its stack marker is saved, preserving the caller's stack lifetime.
       s.write('''$userReturnType $userFunctionName($userArgsString) {
               ${interopArgumentConstructors.join("\n")}
-              $body
+              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
+              ${interopReturnTypeConstructors.join("\n")}
   }''');
     }
 

@@ -119,7 +119,6 @@ List<Func> parseFunctionDeclaration(clang_types.CXCursor cursor) {
         varArgParameters:
             vaFunc.types.map((ta) => Parameter(type: ta, name: 'va')).toList(),
         exposeFunctionTypedefs: config.shouldExposeFunctionTypedef(decl),
-        isLeaf: config.isLeafFunction(decl),
       ));
     }
     bindingsIndex.addFuncToSeen(funcUsr, funcs.last);

@@ -34,55 +34,14 @@ int sizeOf<T extends NativeType>() {
   throw UnsupportedError('sizeOf not supported for $T');
 }
 
-final class _DeferredTypedDataPointer {
-  final TypedData data;
-  final int additionalByteOffset;
+/// An integer byte address in Wasm memory.
+extension type const Pointer<T extends NativeType>(int addr) implements int {
+  const Pointer.fromAddress(int address) : addr = address;
 
-  const _DeferredTypedDataPointer(this.data, this.additionalByteOffset);
-}
+  Pointer<T> operator +(int numElements) =>
+      Pointer<T>(addr + numElements * sizeOf<T>());
 
-/// A pointer passed to or returned from Wasm.
-///
-/// Raw pointers are represented by a JavaScript number. A TypedData `address`
-/// is represented by a boxed Dart descriptor until a generated function
-/// wrapper materializes it for the duration of the native call.
-extension type Pointer<T extends NativeType>._(JSAny _value) implements JSAny {
-  Pointer(int address) : this._(address.toJS);
-  Pointer.fromAddress(int address) : this(address);
-
-  Pointer._fromTypedData(TypedData data)
-      : this._(_DeferredTypedDataPointer(data, 0).toJSBox);
-
-  Pointer._fromDeferred(_DeferredTypedDataPointer pointer)
-      : this._(pointer.toJSBox);
-
-  bool get _isDeferred => !_value.typeofEquals('number');
-
-  _DeferredTypedDataPointer get _deferred =>
-      (_value as JSBoxedDartObject).toDart as _DeferredTypedDataPointer;
-
-  int get addr {
-    if (_isDeferred) {
-      throw StateError(
-        'A TypedData address is only available during a generated native call.',
-      );
-    }
-    return (_value as JSNumber).toDartInt;
-  }
-
-  Pointer<T> operator +(int numElements) {
-    final byteOffset = numElements * sizeOf<T>();
-    if (!_isDeferred) return Pointer<T>(addr + byteOffset);
-    final deferred = _deferred;
-    return Pointer<T>._fromDeferred(
-      _DeferredTypedDataPointer(
-        deferred.data,
-        deferred.additionalByteOffset + byteOffset,
-      ),
-    );
-  }
-
-  Pointer<U> cast<U extends NativeType>() => Pointer<U>._(_value);
+  Pointer<U> cast<U extends NativeType>() => Pointer<U>(addr);
 
   void free() {
     final address = addr;
@@ -566,20 +525,6 @@ abstract base class Union extends NativeType {
 
 final _heapAllocations = <int>{};
 
-/// Returns [pointer] when it is already a raw Wasm address.
-///
-/// Generated non-leaf functions use this to reject TypedData addresses, which
-/// have the same leaf-call restriction as `dart:ffi`.
-Pointer<T> rawPointer<T extends NativeType>(Pointer<T> pointer) {
-  if (pointer._isDeferred) {
-    throw StateError(
-      'TypedData.address can only be passed to a generated function configured '
-      'as leaf.',
-    );
-  }
-  return pointer;
-}
-
 final class _TypedDataRange {
   final ByteBuffer buffer;
   int start;
@@ -593,35 +538,35 @@ final class _TypedDataRange {
   Uint8List get source => buffer.asUint8List(start, length);
 }
 
-/// Materializes deferred TypedData pointers for one generated native call.
+/// Temporary native copies of the buffers registered with [withNativeBuffers].
 ///
-/// Generated wrappers create a scope only when a function has pointer
-/// arguments. Raw Wasm pointers pass through unchanged. TypedData pointers
-/// sharing a backing buffer share one Wasm allocation, preserving pointer
-/// aliasing and overlapping views.
-final class NativeCallScope {
+/// Addresses remain valid only during that synchronous scope. Buffers already
+/// backed by Wasm memory are borrowed without copying or taking ownership.
+final class NativeBufferScope {
   static const _maximumStackBytes = 32 * 1024;
 
   final _ranges = <_TypedDataRange>[];
-  final _pointerRanges = <_DeferredTypedDataPointer, _TypedDataRange>{};
+  final _addresses = Map<TypedData, int>.identity();
   Pointer<Uint8>? _allocation;
   Pointer<Void>? _stackMarker;
   bool _closed = false;
 
-  NativeCallScope(Iterable<Pointer> pointers) {
+  NativeBufferScope._(Iterable<TypedData> buffers) {
     try {
-      _prepare(pointers);
+      _prepare(buffers.toList());
     } catch (_) {
       _close(copyBack: false);
       rethrow;
     }
   }
 
-  void _prepare(Iterable<Pointer> pointers) {
-    for (final pointer in pointers) {
-      if (!pointer._isDeferred) continue;
-      final deferred = pointer._deferred;
-      final data = deferred.data;
+  void _prepare(List<TypedData> buffers) {
+    for (final data in buffers) {
+      final existing = _wasmHeapAddress<Uint8>(data);
+      if (existing != null) {
+        _addresses[data] = existing.addr;
+        continue;
+      }
       final start = data.offsetInBytes;
       final end = start + data.lengthInBytes;
       _TypedDataRange? range;
@@ -638,7 +583,6 @@ final class NativeCallScope {
         if (start < range.start) range.start = start;
         if (end > range.end) range.end = end;
       }
-      _pointerRanges[deferred] = range;
     }
 
     if (_ranges.isEmpty) return;
@@ -669,22 +613,26 @@ final class NativeCallScope {
           .asTypedList(range.length)
           .setAll(0, range.source);
     }
+    for (final data in buffers) {
+      if (_addresses.containsKey(data)) continue;
+      final range = _ranges.firstWhere((r) => r.buffer == data.buffer);
+      _addresses[data] = _allocation!.addr +
+          range.allocationOffset +
+          data.offsetInBytes -
+          range.start;
+    }
   }
 
-  /// Returns the raw Wasm pointer used for this call.
-  Pointer<T> addressOf<T extends NativeType>(Pointer<T> pointer) {
-    if (!pointer._isDeferred) return pointer;
-    final deferred = pointer._deferred;
-    final range = _pointerRanges[deferred]!;
-    final address = _allocation!.addr +
-        range.allocationOffset +
-        deferred.data.offsetInBytes -
-        range.start +
-        deferred.additionalByteOffset;
+  /// Returns an address for a buffer registered when this scope was opened.
+  /// Choose [T] to match the native function's pointer type.
+  Pointer<T> addressOf<T extends NativeType>(TypedData data) {
+    if (_closed) throw StateError('The native buffer scope is closed.');
+    final address = _addresses[data];
+    if (address == null) {
+      throw ArgumentError('The buffer was not registered with this scope.');
+    }
     return Pointer<T>(address);
   }
-
-  void close() => _close(copyBack: true);
 
   void _close({required bool copyBack}) {
     if (_closed) return;
@@ -710,16 +658,26 @@ final class NativeCallScope {
   }
 }
 
-/// Runs a generated native call with all deferred pointers materialized.
-R withNativeCall<R>(
-  Iterable<Pointer> pointers,
-  R Function(NativeCallScope scope) body,
-) {
-  final scope = NativeCallScope(pointers);
+/// Copies [buffers] into one temporary allocation and runs [body] synchronously.
+///
+/// Uses the stack up to 32 KiB including alignment, otherwise the heap. Aliased
+/// buffers retain their relative offsets. Copies writes back on exit (even if
+/// [body] throws), then releases the allocation. Set [copyBack] to false for
+/// input-only or unmodifiable data. This does not change borrowed Wasm views.
+///
+/// Do not return or retain temporary pointers or views, or use an async body.
+/// Stack allocations made inside [body], including generated return structs,
+/// also expire when a stack-backed scope closes. Copy their values out first.
+R withNativeBuffers<R>(
+  Iterable<TypedData> buffers,
+  R Function(NativeBufferScope scope) body, {
+  bool copyBack = true,
+}) {
+  final scope = NativeBufferScope._(buffers);
   try {
     return body(scope);
   } finally {
-    scope.close();
+    scope._close(copyBack: copyBack);
   }
 }
 
@@ -767,16 +725,24 @@ external bool _objectIs(JSObject a, JSObject b);
 ///
 /// Checking the backing buffer also recognizes views derived from an allocated
 /// list, such as `floatList.asUint8List()`.
-Pointer<T>? _wasmHeapAddress<T extends NativeType>(
-    TypedData data, JSObject jsArray) {
+Pointer<T>? _wasmHeapAddress<T extends NativeType>(TypedData data) {
   if (data.lengthInBytes == 0) {
     return Pointer<T>(0);
   }
-  final view = _JSTypedArrayView._(jsArray);
+  final view = _JSTypedArrayView._(Uint8List.sublistView(data).toJS);
   if (_objectIs(view.buffer, NativeLibrary.instance.HEAPU8.buffer)) {
     return Pointer<T>(view.byteOffset);
   }
   return null;
+}
+
+Pointer<T> _existingTypedDataAddress<T extends NativeType>(TypedData data) {
+  final address = _wasmHeapAddress<T>(data);
+  if (address != null) return address;
+  throw StateError(
+    'This TypedData is not backed by Wasm memory. '
+    'Use withNativeBuffers([data], (scope) => ... scope.addressOf(data) ...).',
+  );
 }
 
 @JS('Uint8Array')
@@ -819,85 +785,39 @@ extension type Float64ArrayWrapper._(JSObject _) implements JSObject {
 }
 
 extension Uint8ListExtension on Uint8List {
-  Pointer<Uint8> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint8>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Uint8>._fromTypedData(this);
-  }
+  Pointer<Uint8> get address => _existingTypedDataAddress<Uint8>(this);
 }
 
 extension Int8ListExtension on Int8List {
-  Pointer<Int8> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int8>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Int8>._fromTypedData(this);
-  }
+  Pointer<Int8> get address => _existingTypedDataAddress<Int8>(this);
 }
 
 extension Float32ListExtension on Float32List {
-  Pointer<Float32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Float32>._fromTypedData(this);
-  }
+  Pointer<Float32> get address => _existingTypedDataAddress<Float32>(this);
 }
 
 extension Int16ListExtension on Int16List {
-  Pointer<Int16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Int16>._fromTypedData(this);
-  }
+  Pointer<Int16> get address => _existingTypedDataAddress<Int16>(this);
 }
 
 extension Uint16ListExtension on Uint16List {
-  Pointer<Uint16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Uint16>._fromTypedData(this);
-  }
+  Pointer<Uint16> get address => _existingTypedDataAddress<Uint16>(this);
 }
 
 extension UInt32ListExtension on Uint32List {
-  Pointer<Uint32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Uint32>._fromTypedData(this);
-  }
+  Pointer<Uint32> get address => _existingTypedDataAddress<Uint32>(this);
 }
 
 extension Int32ListExtension on Int32List {
-  Pointer<Int32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Int32>._fromTypedData(this);
-  }
+  Pointer<Int32> get address => _existingTypedDataAddress<Int32>(this);
 }
 
 extension Int64ListExtension on Int64List {
-  Pointer<Int64> get address {
-    final bytes = buffer.asUint8List(offsetInBytes, lengthInBytes);
-    final jsArray = bytes.toJS;
-    final heapAddress = _wasmHeapAddress<Int64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Int64>._fromTypedData(this);
-  }
+  Pointer<Int64> get address => _existingTypedDataAddress<Int64>(this);
 }
 
 extension Float64ListExtension on Float64List {
-  Pointer<Float64> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    return Pointer<Float64>._fromTypedData(this);
-  }
+  Pointer<Float64> get address => _existingTypedDataAddress<Float64>(this);
 }
 
 extension AsUint8List on Pointer<Uint8> {

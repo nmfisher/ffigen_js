@@ -4,14 +4,6 @@ output: 'lib/generated_bindings_js.g.dart'
 headers:
   entry-points:
     - 'native/include/example.h'
-functions:
-  leaf:
-    include:
-      - 'write_.*_for_address_test'
-      - 'verify_typed_data_.*'
-      - 'sum_bytes'
-      - 'pointer_is_on_stack'
-      - 'return_struct_for_address_test'
 enums:
   as-int:
     include:
