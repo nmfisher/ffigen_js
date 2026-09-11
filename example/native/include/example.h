@@ -79,6 +79,7 @@ bool verify_typed_data_inputs_for_address_test(
     float *float32_value,
     double *float64_value);
 int sum(int a, int b);
+int sum_bytes(const uint8_t *data, size_t length);
 
 INTTYPE sum_with_typedef(INTTYPE a, INTTYPE b);
 int subtract(int *a, int b);

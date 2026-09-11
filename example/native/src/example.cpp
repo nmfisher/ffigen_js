@@ -87,6 +87,15 @@ int EMSCRIPTEN_KEEPALIVE sum(int a, int b) {
     return a + b;
 }
 
+/** Sums a byte buffer so tests can verify Dart data was copied correctly. */
+int EMSCRIPTEN_KEEPALIVE sum_bytes(const uint8_t *data, size_t length) {
+    int total = 0;
+    for (size_t i = 0; i < length; i++) {
+        total += data[i];
+    }
+    return total;
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }
