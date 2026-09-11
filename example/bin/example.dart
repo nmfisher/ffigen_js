@@ -53,7 +53,7 @@ void main(List<String> args) async {
   var ptr = MyStruct.stackAlloc();
   var struct = ptr.toDart();
   struct.a = 20.0;
-  struct.b = Pointer<Char>(0 as Pointer<Char>);
+  struct.b = Pointer<Char>(0);
   struct.c = 8;
 
   assert(ptr.toDart().a == 20.0, ptr.toDart().a);
@@ -257,6 +257,23 @@ void main(List<String> args) async {
   assert(makeUint8List(0).address.addr == 0,
       'An empty TypedData value should have a null address');
 
+  NativeLibrary.instance.stackRestore(typedDataStack);
+
+  // Pointers are integer values; only an explicit scope copies Dart buffers.
+  const integerPointer = Pointer<Uint8>(1024);
+  final int integerAddress = integerPointer;
+  assert(integerAddress == 1024 && (integerPointer + 3).addr == 1027);
+  assert(integerPointer.cast<Int32>() == const Pointer<Int32>(1024));
+  assert({integerPointer: 7}[const Pointer<Uint8>(1024)] == 7);
+
+  var ordinaryAddressRejected = false;
+  try {
+    Uint8List(1).address;
+  } on StateError {
+    ordinaryAddressRejected = true;
+  }
+  assert(ordinaryAddressRejected, 'Ordinary Dart data needs an explicit scope');
+
   final dartUint8 = Uint8List.fromList([17]);
   final dartInt16 = Int16List.fromList([-18]);
   final dartUint16 = Uint16List.fromList([60000]);
@@ -265,57 +282,211 @@ void main(List<String> args) async {
   final dartUint32 = Uint32List.fromList([4000000000]);
   final dartFloat32 = Float32List.fromList([1.25]);
   final dartFloat64 = Float64List.fromList([-2.5]);
-  final dartUint8Address = dartUint8.address;
-  final dartInt16Address = dartInt16.address;
-  final dartUint16Address = dartUint16.address;
-  final dartInt32Address = dartInt32.address;
-  final dartInt64Address = dartInt64.address;
-  final dartUint32Address = dartUint32.address;
-  final dartFloat32Address = dartFloat32.address;
-  final dartFloat64Address = dartFloat64.address;
-
+  withNativeBuffers([
+    dartUint8,
+    dartInt16,
+    dartUint16,
+    dartInt32,
+    dartInt64,
+    dartUint32,
+    dartFloat32,
+    dartFloat64,
+  ], (scope) {
+    assert(
+        verify_typed_data_inputs_for_address_test(
+          scope.addressOf(dartUint8),
+          scope.addressOf(dartInt16),
+          scope.addressOf(dartUint16),
+          scope.addressOf(dartInt32),
+          scope.addressOf(dartInt64),
+          scope.addressOf(dartUint32),
+          scope.addressOf(dartFloat32),
+          scope.addressOf(dartFloat64),
+        ),
+        'Typed-list inputs were not copied correctly');
+    final pointer = scope.addressOf<Uint8>(dartUint8);
+    assert(pointer_is_on_stack(pointer));
+    write_uint8_for_address_test(pointer);
+    assert(sum_bytes(pointer, 1) == 201,
+        'A pointer could not be reused in its scope');
+    assert(dartUint8[0] == 17, 'Copy-back happened before scope exit');
+    write_int16_for_address_test(scope.addressOf(dartInt16));
+    write_uint16_for_address_test(scope.addressOf(dartUint16));
+    write_int32_for_address_test(scope.addressOf(dartInt32));
+    write_int64_for_address_test(scope.addressOf(dartInt64));
+    write_uint32_for_address_test(scope.addressOf(dartUint32));
+    write_float32_for_address_test(scope.addressOf(dartFloat32));
+    write_float64_for_address_test(scope.addressOf(dartFloat64));
+  });
   assert(
-      verify_typed_data_inputs_for_address_test(
-        dartUint8Address,
-        dartInt16Address,
-        dartUint16Address,
-        dartInt32Address,
-        dartInt64Address,
-        dartUint32Address,
-        dartFloat32Address,
-        dartFloat64Address,
-      ),
-      'Ordinary Dart typed lists were not copied into Wasm memory correctly');
+      dartUint8[0] == 201 &&
+          dartInt16[0] == -1234 &&
+          dartUint16[0] == 54321 &&
+          dartInt32[0] == -123456789 &&
+          dartInt64[0] == -9007199254740995 &&
+          dartUint32[0] == 3456789012 &&
+          dartFloat32[0] == 12.5 &&
+          dartFloat64[0] == 9876.5,
+      'Native writes were not copied back to ordinary Dart typed lists');
 
-  write_uint8_for_address_test(dartUint8Address);
-  write_int16_for_address_test(dartInt16Address);
-  write_uint16_for_address_test(dartUint16Address);
-  write_int32_for_address_test(dartInt32Address);
-  write_int64_for_address_test(dartInt64Address);
-  write_uint32_for_address_test(dartUint32Address);
-  write_float32_for_address_test(dartFloat32Address);
-  write_float64_for_address_test(dartFloat64Address);
-  assert(
-      dartUint8[0] == 17 &&
-          dartInt16[0] == -18 &&
-          dartUint16[0] == 60000 &&
-          dartInt32[0] == -1234567 &&
-          dartInt64[0] == -9007199254740993 &&
-          dartUint32[0] == 4000000000 &&
-          dartFloat32[0] == 1.25 &&
-          dartFloat64[0] == -2.5,
-      'Native writes to copied inputs unexpectedly changed a Dart list');
+  final signedBytes = Int8List.fromList([-7]);
+  final empty = Uint8List(0);
+  late NativeBufferScope closedScope;
+  withNativeBuffers([signedBytes, empty], (scope) {
+    closedScope = scope;
+    final pointer = scope.addressOf<Int8>(signedBytes);
+    assert(pointer.asTypedList(1)[0] == -7);
+    pointer.asTypedList(1)[0] = -8;
+    assert(scope.addressOf<Uint8>(empty).addr == 0);
+    var unregisteredRejected = false;
+    try {
+      scope.addressOf<Uint8>(Uint8List(1));
+    } on ArgumentError {
+      unregisteredRejected = true;
+    }
+    assert(unregisteredRejected);
+  });
+  assert(signedBytes[0] == -8);
+  var closedRejected = false;
+  try {
+    closedScope.addressOf<Int8>(signedBytes);
+  } on StateError {
+    closedRejected = true;
+  }
+  assert(closedRejected);
 
-  NativeLibrary.instance.stackRestore(typedDataStack);
+  final readonly = Uint8List.fromList([2, 3]).asUnmodifiableView();
+  final total = withNativeBuffers([readonly], (scope) {
+    final pointer = scope.addressOf<Uint8>(readonly);
+    final sum = sum_bytes(pointer, readonly.length);
+    write_uint8_for_address_test(pointer);
+    return sum;
+  }, copyBack: false);
+  assert(total == 5 && readonly[0] == 2, 'Input-only scope wrote back');
 
-  final largeDartUint8 = Uint8List(32 * 1024)..[0] = 99;
-  final largeDartUint8Address = largeDartUint8.address;
-  assert(largeDartUint8Address.asTypedList(1)[0] == 99,
-      'The malloc-backed input was not copied into Wasm memory');
-  write_uint8_for_address_test(largeDartUint8Address);
-  assert(largeDartUint8[0] == 99,
-      'A native write to a malloc-backed copy changed the Dart list');
-  largeDartUint8Address.free();
+  final aliasedData = Uint8List.fromList([1, 2, 3, 4]);
+  final aliasedView = Uint8List.sublistView(aliasedData, 1);
+  withNativeBuffers([aliasedData, aliasedView], (scope) {
+    assert(verify_typed_data_alias(
+        scope.addressOf(aliasedData), scope.addressOf(aliasedView)));
+  });
+  assert(aliasedData[1] == 77 && aliasedView[0] == 77);
+
+  final mixedBuffer = Uint8List(16);
+  final mixedBytes = Uint8List.view(mixedBuffer.buffer, 1, 7);
+  final mixedWords = Uint32List.view(mixedBuffer.buffer, 4, 1);
+  withNativeBuffers([mixedBytes, mixedWords], (scope) {
+    assert(verify_typed_data_alignment(
+        scope.addressOf(mixedBytes), scope.addressOf(mixedWords)));
+  });
+  assert(mixedWords[0] == 123456, 'Aligned native write was not copied back');
+
+  // The combined aligned size determines the allocation for the whole scope.
+  // Cleanup and copy-back run even if the body throws.
+  for (final length in [16 * 1024, 16 * 1024 + 1]) {
+    final first = Uint8List(length);
+    final second = Uint8List(length);
+    final marker = NativeLibrary.instance.stackSave();
+    final failure = StateError('native call failed');
+    try {
+      withNativeBuffers([first, second], (scope) {
+        final firstRaw = scope.addressOf<Uint8>(first);
+        final secondRaw = scope.addressOf<Uint8>(second);
+        final onStack = length == 16 * 1024;
+        assert(pointer_is_on_stack(firstRaw) == onStack);
+        assert(pointer_is_on_stack(secondRaw) == onStack);
+        assert(secondRaw.addr - firstRaw.addr == ((length + 15) & ~15));
+        firstRaw.asTypedList(1)[0] = 21;
+        secondRaw.asTypedList(1)[0] = 22;
+        throw failure;
+      });
+    } on StateError catch (error) {
+      assert(identical(error, failure));
+    }
+    assert(first[0] == 21 && second[0] == 22);
+    assert(NativeLibrary.instance.stackSave().addr == marker.addr);
+  }
+
+  // Copy values out of a returned struct before the explicit stack scope ends.
+  final resultInput = Uint8List.fromList([9]);
+  final scopedResult = withNativeBuffers([resultInput], (scope) {
+    final result = return_struct_for_address_test(scope.addressOf(resultInput));
+    return (a: result.a, c: result.c);
+  });
+  final resultMarker = NativeLibrary.instance.stackSave();
+  makeUint8List(128).fillRange(0, 128, 0);
+  assert(scopedResult.a == 9 && scopedResult.c == 42);
+  NativeLibrary.instance.stackRestore(resultMarker);
+
+  // Callbacks can open nested scopes while the outer buffers remain live.
+  for (final length in [1, 64 * 1024]) {
+    final callbackData = Uint8List(length)..[0] = 5;
+    final callbackMarker = NativeLibrary.instance.stackSave();
+    var callbackRan = false;
+    final callbackPointer = (() {
+      callbackRan = true;
+      assert(callbackData[0] == 5, 'Copy-back happened during a callback');
+      final nestedData = Uint8List.fromList([3, 4]);
+      withNativeBuffers([nestedData], (scope) {
+        final pointer = scope.addressOf<Uint8>(nestedData);
+        write_uint8_for_address_test(pointer);
+        assert(sum_bytes(pointer, nestedData.length) == 205);
+      });
+      assert(nestedData[0] == 201);
+    }).addFunction();
+    try {
+      withNativeBuffers([callbackData], (scope) {
+        final pointer = scope.addressOf<Uint8>(callbackData);
+        assert(pointer_is_on_stack(pointer) == (length == 1));
+        update_bytes_with_callback(pointer, callbackPointer);
+      });
+    } finally {
+      callbackPointer.dispose();
+    }
+    assert(callbackRan && callbackData[0] == 22);
+    assert(NativeLibrary.instance.stackSave().addr == callbackMarker.addr);
+  }
+
+  // Repeated inputs exceed the fixed Wasm heap if scopes retain allocations.
+  for (var i = 0; i < 256; i++) {
+    final batchInput = Uint8List(64 * 1024)..[0] = i % 256;
+    withNativeBuffers([batchInput], (scope) {
+      assert(
+          sum_bytes(scope.addressOf(batchInput), batchInput.length) == i % 256);
+    });
+  }
+  // Views already backed by Emscripten memory remain caller-owned.
+  final borrowedMarker = NativeLibrary.instance.stackSave();
+  final borrowed = makeUint8List(8)
+    ..fillRange(0, 8, 0)
+    ..[2] = 9;
+  write_uint8_for_address_test(borrowed.address);
+  assert(borrowed[0] == 201,
+      'A native write did not reach an Emscripten-backed list');
+  assert(sum_bytes(borrowed.address, borrowed.length) == 210,
+      'An Emscripten-backed list was not readable after a native call');
+  final borrowedScopeMarker = NativeLibrary.instance.stackSave();
+  withNativeBuffers([borrowed], (scope) {
+    assert(scope.addressOf<Uint8>(borrowed).addr == borrowed.address.addr);
+    assert(NativeLibrary.instance.stackSave().addr == borrowedScopeMarker.addr,
+        'Borrowing a Wasm view allocated temporary stack memory');
+    write_uint8_for_address_test(scope.addressOf(borrowed));
+    assert(borrowed[0] == 201);
+  });
+  NativeLibrary.instance.stackRestore(borrowedMarker);
+
+  // Data retained beyond one call uses explicit native allocation, as it does
+  // with dart:ffi, and remains valid until its pointer is freed.
+  final retainedPointer = malloc<Uint8>(3);
+  final retained = retainedPointer.asTypedList(3)..setAll(0, [9, 8, 7]);
+  assert(sum_bytes(retainedPointer, retained.length) == 24,
+      'Explicitly allocated data was not readable by native code');
+  write_uint8_for_address_test(retainedPointer);
+  assert(retained[0] == 201,
+      'Explicitly allocated data did not remain backed by Wasm memory');
+  retainedPointer.free();
+
+  print("explicit native buffer scope tests passed");
 
   print("All TypedData accessor tests passed");
 

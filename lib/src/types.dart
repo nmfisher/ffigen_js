@@ -34,13 +34,18 @@ int sizeOf<T extends NativeType>() {
   throw UnsupportedError('sizeOf not supported for $T');
 }
 
+/// An integer byte address in Wasm memory.
 extension type const Pointer<T extends NativeType>(int addr) implements int {
   const Pointer.fromAddress(int address) : addr = address;
-  Pointer<T> operator +(int numElements) => Pointer<T>(this.addr + (numElements * sizeOf<T>()));
-  Pointer<U> cast<U extends NativeType>() => this as Pointer<U>;
+
+  Pointer<T> operator +(int numElements) =>
+      Pointer<T>(addr + numElements * sizeOf<T>());
+
+  Pointer<U> cast<U extends NativeType>() => Pointer<U>(addr);
+
   void free() {
-    if (_heapAllocations.contains(this)) {
-      _heapAllocations.remove(this);
+    final address = addr;
+    if (_heapAllocations.remove(address)) {
       _lib._free(this);
     }
   }
@@ -83,13 +88,13 @@ Pointer<NativeFunction<T>> addFunction<T>(JSFunction fn, String signature) {
 
 abstract class Char extends NativeType {
   static Pointer<Char> stackAlloc(int count) {
-    return Pointer<Char>(_lib._stackAlloc<Char>(4 * count));
+    return _lib._stackAlloc<Char>(4 * count);
   }
 }
 
 abstract class Bool extends NativeType {
   static Pointer<Bool> stackAlloc(int count) {
-    return Pointer<Bool>(_lib._stackAlloc<Char>(4 * count));
+    return _lib._stackAlloc<Char>(4 * count).cast();
   }
 }
 
@@ -153,10 +158,13 @@ abstract class Void extends NativeType {}
 
 Pointer<Never> nullptr = Pointer<Never>(0);
 
-extension PointerPointerClass<T extends NativeType> on Pointer<PointerClass<T>> {
+extension PointerPointerClass<T extends NativeType>
+    on Pointer<PointerClass<T>> {
   Pointer<T> operator [](int i) {
     return Pointer<T>(
-      _lib.getValue(Pointer<PointerClass<T>>(this.addr + (i * 4)), 'i32').toDartInt,
+      _lib
+          .getValue(Pointer<PointerClass<T>>(this.addr + (i * 4)), 'i32')
+          .toDartInt,
     );
   }
 
@@ -271,7 +279,8 @@ extension DisposePointerClass<T extends NativeType> on Pointer<NativeFunction> {
   }
 }
 
-extension type const Array<T extends NativeType>(({int numElements, Pointer<T> addr}) internal) {
+extension type const Array<T extends NativeType>(
+    ({int numElements, Pointer<T> addr}) internal) {
   Array<U> cast<U extends NativeType>() => this as Array<U>;
 
   Uint8List asUint8List() {
@@ -319,7 +328,9 @@ extension ArrayFloat64Ext on Array<Float64> {
 late NativeLibrary _lib;
 
 Pointer<T> malloc<T extends NativeType>(int numBytes) {
-  return _lib._malloc<T>(numBytes);
+  final pointer = _lib._malloc<T>(numBytes);
+  _heapAllocations.add(pointer.addr);
+  return pointer;
 }
 
 Pointer<T> stackAlloc<T extends NativeType>(int numBytes) {
@@ -357,21 +368,24 @@ extension DartBigIntExtension on BigInt {
 
 Uint8List makeUint8List(int length) {
   var ptr = stackAlloc<Uint8>(length);
-  var wrapper = Uint8ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint8Array;
+  var wrapper =
+      Uint8ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint8Array;
   var uint8List = wrapper.toDart;
   return uint8List;
 }
 
 Int16List makeInt16List(int length) {
   var ptr = stackAlloc<Int16>(length * 2);
-  var wrapper = Int16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt16Array;
+  var wrapper =
+      Int16ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSInt16Array;
   var int16List = wrapper.toDart;
   return int16List;
 }
 
 Uint16List makeUint16List(int length) {
   var ptr = stackAlloc<Uint16>(length * 2);
-  var wrapper = Uint16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint16Array;
+  var wrapper =
+      Uint16ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint16Array;
   var uint16List = wrapper.toDart;
   return uint16List;
 }
@@ -382,14 +396,16 @@ IntPtrList makeIntPtrList(int length) {
 
 Uint32List makeUint32List(int length) {
   var ptr = stackAlloc<Uint32>(length * 4);
-  var wrapper = Uint32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint32Array;
+  var wrapper =
+      Uint32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint32Array;
   var uint32List = wrapper.toDart;
   return uint32List;
 }
 
 Int32List makeInt32List(int length) {
   var ptr = stackAlloc<Int32>(length * 4);
-  var wrapper = Int32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt32Array;
+  var wrapper =
+      Int32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSInt32Array;
   var int32List = wrapper.toDart;
   return int32List;
 }
@@ -402,54 +418,22 @@ Int64List makeInt64List(int length) {
 
 Float32List makeFloat32List(int length) {
   var ptr = stackAlloc<Float32>(length * 4);
-  var wrapper = Float32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat32Array;
+  var wrapper = Float32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length)
+      as JSFloat32Array;
   var f32List = wrapper.toDart;
   return f32List;
 }
 
 Float64List makeFloat64List(int length) {
   var ptr = stackAlloc<Float64>(length * 8);
-  var wrapper = Float64ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat64Array;
+  var wrapper = Float64ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length)
+      as JSFloat64Array;
   var f64List = wrapper.toDart;
   return f64List;
 }
 
 extension TypedDataExtension<T> on TypedData {
-  /// Releases the backing allocation only when this view was created from a
-  /// tracked `malloc` pointer. This does not reclaim the stack allocation used
-  /// by `make*List`; restore the corresponding Emscripten stack marker instead.
-  void free() {
-    Pointer<Void>(this.offsetInBytes).free();
-  }
-
-  Uint8List asUint8List() {
-    if (this is Int32List) {
-      return (this as Int32List).asUint8List();
-    }
-
-    if (this is Uint32List) {
-      return (this as Uint32List).asUint8List();
-    }
-
-    if (this is Int16List) {
-      return (this as Int16List).asUint8List();
-    }
-
-    if (this is Uint16List) {
-      return (this as Uint16List).asUint8List();
-    }
-
-    if (this is Float32List) {
-      return (this as Float32List).asUint8List();
-    }
-    if (this is Int64List) {
-      return (this as Int64List).asUint8List();
-    }
-    if (this is Float64List) {
-      return (this as Float64List).asUint8List();
-    }
-    throw UnimplementedError();
-  }
+  Uint8List asUint8List() => Uint8List.sublistView(this);
 }
 
 extension type NativeLibrary(JSObject _) implements JSObject {
@@ -539,19 +523,162 @@ abstract base class Union extends NativeType {
   Union(this._address);
 }
 
-final _heapAllocations = <Pointer>{};
+final _heapAllocations = <int>{};
 
-Pointer<T> _getPointer<T extends NativeType>(TypedData data) {
-  late Pointer<T> ptr;
+final class _TypedDataRange {
+  final ByteBuffer buffer;
+  int start;
+  int end;
+  int allocationOffset = 0;
 
-  if (data.lengthInBytes < 32 * 1024) {
-    ptr = stackAlloc(data.lengthInBytes).cast<T>();
-  } else {
-    ptr = malloc<T>(data.lengthInBytes);
-    _heapAllocations.add(ptr);
+  _TypedDataRange(this.buffer, this.start, this.end);
+
+  int get length => end - start;
+
+  Uint8List get source => buffer.asUint8List(start, length);
+}
+
+/// Temporary native copies of the buffers registered with [withNativeBuffers].
+///
+/// Addresses remain valid only during that synchronous scope. Buffers already
+/// backed by Wasm memory are borrowed without copying or taking ownership.
+final class NativeBufferScope {
+  static const _maximumStackBytes = 32 * 1024;
+
+  final _ranges = <_TypedDataRange>[];
+  final _addresses = Map<TypedData, int>.identity();
+  Pointer<Uint8>? _allocation;
+  Pointer<Void>? _stackMarker;
+  bool _closed = false;
+
+  NativeBufferScope._(Iterable<TypedData> buffers) {
+    try {
+      _prepare(buffers.toList());
+    } catch (_) {
+      _close(copyBack: false);
+      rethrow;
+    }
   }
 
-  return ptr;
+  void _prepare(List<TypedData> buffers) {
+    for (final data in buffers) {
+      final existing = _wasmHeapAddress<Uint8>(data);
+      if (existing != null) {
+        _addresses[data] = existing.addr;
+        continue;
+      }
+      final start = data.offsetInBytes;
+      final end = start + data.lengthInBytes;
+      _TypedDataRange? range;
+      for (final candidate in _ranges) {
+        if (candidate.buffer == data.buffer) {
+          range = candidate;
+          break;
+        }
+      }
+      if (range == null) {
+        range = _TypedDataRange(data.buffer, start, end);
+        _ranges.add(range);
+      } else {
+        if (start < range.start) range.start = start;
+        if (end > range.end) range.end = end;
+      }
+    }
+
+    if (_ranges.isEmpty) return;
+
+    var totalBytes = 0;
+    for (final range in _ranges) {
+      // Preserve the original alignment of every view, including mixed-type
+      // aliases, and align each range within the single temporary allocation.
+      range.start &= ~15;
+      range.allocationOffset = totalBytes;
+      totalBytes += (range.length + 15) & ~15;
+    }
+
+    if (totalBytes <= _maximumStackBytes) {
+      _stackMarker = _lib.stackSave();
+      _allocation = stackAlloc<Uint8>(totalBytes);
+    } else {
+      // The scope owns this allocation directly; it is not a public malloc.
+      final allocation = _lib._malloc<Uint8>(totalBytes);
+      if (allocation.addr == 0) {
+        throw StateError(
+            'Could not allocate $totalBytes bytes for native call.');
+      }
+      _allocation = allocation;
+    }
+    for (final range in _ranges) {
+      (_allocation! + range.allocationOffset)
+          .asTypedList(range.length)
+          .setAll(0, range.source);
+    }
+    for (final data in buffers) {
+      if (_addresses.containsKey(data)) continue;
+      final range = _ranges.firstWhere((r) => r.buffer == data.buffer);
+      _addresses[data] = _allocation!.addr +
+          range.allocationOffset +
+          data.offsetInBytes -
+          range.start;
+    }
+  }
+
+  /// Returns an address for a buffer registered when this scope was opened.
+  /// Choose [T] to match the native function's pointer type.
+  Pointer<T> addressOf<T extends NativeType>(TypedData data) {
+    if (_closed) throw StateError('The native buffer scope is closed.');
+    final address = _addresses[data];
+    if (address == null) {
+      throw ArgumentError('The buffer was not registered with this scope.');
+    }
+    return Pointer<T>(address);
+  }
+
+  void _close({required bool copyBack}) {
+    if (_closed) return;
+    _closed = true;
+    try {
+      if (copyBack) {
+        for (final range in _ranges) {
+          range.source.setAll(
+            0,
+            (_allocation! + range.allocationOffset).asTypedList(range.length),
+          );
+        }
+      }
+    } finally {
+      final stackMarker = _stackMarker;
+      if (stackMarker != null) {
+        _lib.stackRestore(stackMarker);
+      } else {
+        final allocation = _allocation;
+        if (allocation != null) _lib._free(allocation);
+      }
+    }
+  }
+}
+
+/// Copies [buffers] into one temporary allocation and runs [body] synchronously.
+///
+/// Uses the stack up to 32 KiB including alignment, otherwise the heap. Aliased
+/// buffers retain their relative offsets. Copies writes back on exit (even if
+/// [body] throws), then releases the allocation. Set [copyBack] to false for
+/// input-only or unmodifiable data. This does not change borrowed Wasm views.
+///
+/// Do not return or retain temporary pointers or views, or use an async body.
+/// Stack allocations made inside [body], including generated return structs,
+/// also expire when a stack-backed scope closes. Copy their values out first.
+R withNativeBuffers<R>(
+  Iterable<TypedData> buffers,
+  R Function(NativeBufferScope scope) body, {
+  bool copyBack = true,
+}) {
+  final scope = NativeBufferScope._(buffers);
+  try {
+    return body(scope);
+  } finally {
+    scope._close(copyBack: copyBack);
+  }
 }
 
 extension JSUint8BackingBuffer on JSUint8Array {
@@ -598,16 +725,24 @@ external bool _objectIs(JSObject a, JSObject b);
 ///
 /// Checking the backing buffer also recognizes views derived from an allocated
 /// list, such as `floatList.asUint8List()`.
-Pointer<T>? _wasmHeapAddress<T extends NativeType>(
-    TypedData data, JSObject jsArray) {
+Pointer<T>? _wasmHeapAddress<T extends NativeType>(TypedData data) {
   if (data.lengthInBytes == 0) {
     return Pointer<T>(0);
   }
-  final view = _JSTypedArrayView._(jsArray);
+  final view = _JSTypedArrayView._(Uint8List.sublistView(data).toJS);
   if (_objectIs(view.buffer, NativeLibrary.instance.HEAPU8.buffer)) {
     return Pointer<T>(view.byteOffset);
   }
   return null;
+}
+
+Pointer<T> _existingTypedDataAddress<T extends NativeType>(TypedData data) {
+  final address = _wasmHeapAddress<T>(data);
+  if (address != null) return address;
+  throw StateError(
+    'This TypedData is not backed by Wasm memory. '
+    'Use withNativeBuffers([data], (scope) => ... scope.addressOf(data) ...).',
+  );
 }
 
 @JS('Uint8Array')
@@ -650,141 +785,91 @@ extension type Float64ArrayWrapper._(JSObject _) implements JSObject {
 }
 
 extension Uint8ListExtension on Uint8List {
-  Pointer<Uint8> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint8>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint8>(this);
-    final wrapper =
-        Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint8Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
+  Pointer<Uint8> get address => _existingTypedDataAddress<Uint8>(this);
+}
+
+extension Int8ListExtension on Int8List {
+  Pointer<Int8> get address => _existingTypedDataAddress<Int8>(this);
 }
 
 extension Float32ListExtension on Float32List {
-  Pointer<Float32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Float32>(this);
-    final wrapper =
-        Float32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSFloat32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Float32> get address => _existingTypedDataAddress<Float32>(this);
 }
 
 extension Int16ListExtension on Int16List {
-  Pointer<Int16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int16>(this);
-    final wrapper = Int16ArrayWrapper(
-        NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSInt16Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Int16> get address => _existingTypedDataAddress<Int16>(this);
 }
 
 extension Uint16ListExtension on Uint16List {
-  Pointer<Uint16> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint16>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint16>(this);
-    final wrapper =
-        Uint16ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint16Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Uint16> get address => _existingTypedDataAddress<Uint16>(this);
 }
 
 extension UInt32ListExtension on Uint32List {
-  Pointer<Uint32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Uint32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Uint32>(this);
-    final wrapper =
-        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSUint32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Uint32> get address => _existingTypedDataAddress<Uint32>(this);
 }
 
 extension Int32ListExtension on Int32List {
-  Pointer<Int32> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Int32>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int32>(this);
-    final wrapper =
-        Int32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSInt32Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Int32> get address => _existingTypedDataAddress<Int32>(this);
 }
 
 extension Int64ListExtension on Int64List {
-  Pointer<Int64> get address {
-    final bytes = buffer.asUint8List(offsetInBytes, lengthInBytes);
-    final jsArray = bytes.toJS;
-    final heapAddress = _wasmHeapAddress<Int64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Int64>(this);
-    ptr.cast<Uint8>().asTypedList(lengthInBytes).setAll(0, bytes);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Int64> get address => _existingTypedDataAddress<Int64>(this);
 }
 
 extension Float64ListExtension on Float64List {
-  Pointer<Float64> get address {
-    final jsArray = toJS;
-    final heapAddress = _wasmHeapAddress<Float64>(this, jsArray);
-    if (heapAddress != null) return heapAddress;
-    final ptr = _getPointer<Float64>(this);
-    final wrapper =
-        Float64ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, ptr, length) as JSFloat64Array;
-    wrapper.toDart.setRange(0, length, this);
-    return ptr;
-  }
-
-  Uint8List asUint8List() {
-    return address.cast<Uint8>().asTypedList(lengthInBytes);
-  }
+  Pointer<Float64> get address => _existingTypedDataAddress<Float64>(this);
 }
 
 extension AsUint8List on Pointer<Uint8> {
   Uint8List asTypedList(int length) {
     final start = addr;
     final wrapper =
-        Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length) as JSUint8Array;
+        Uint8ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length)
+            as JSUint8Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsInt8List on Pointer<Int8> {
+  Int8List asTypedList(int length) {
+    final wrapper = Int8ArrayWrapper(
+      NativeLibrary.instance.HEAPU8.buffer,
+      addr,
+      length,
+    ) as JSInt8Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsInt16List on Pointer<Int16> {
+  Int16List asTypedList(int length) {
+    final wrapper = Int16ArrayWrapper(
+      NativeLibrary.instance.HEAPU8.buffer,
+      addr,
+      length,
+    ) as JSInt16Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsUint16List on Pointer<Uint16> {
+  Uint16List asTypedList(int length) {
+    final wrapper = Uint16ArrayWrapper(
+      NativeLibrary.instance.HEAPU8.buffer,
+      addr,
+      length,
+    ) as JSUint16Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsInt32List on Pointer<Int32> {
+  Int32List asTypedList(int length) {
+    final wrapper = Int32ArrayWrapper(
+      NativeLibrary.instance.HEAPU8.buffer,
+      addr,
+      length,
+    ) as JSInt32Array;
     return wrapper.toDart;
   }
 }
@@ -793,8 +878,16 @@ extension AsUint32List on Pointer<Uint32> {
   Uint32List asTypedList(int length) {
     final start = addr;
     final wrapper =
-        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length) as JSUint32Array;
+        Uint32ArrayWrapper(NativeLibrary.instance.HEAPU8.buffer, start, length)
+            as JSUint32Array;
     return wrapper.toDart;
+  }
+}
+
+extension AsInt64List on Pointer<Int64> {
+  Int64List asTypedList(int length) {
+    final bytes = cast<Uint8>().asTypedList(length * 8);
+    return bytes.buffer.asInt64List(bytes.offsetInBytes, length);
   }
 }
 
@@ -806,6 +899,17 @@ extension AsFloat32List on Pointer<Float> {
       start,
       length,
     ) as JSFloat32Array;
+    return wrapper.toDart;
+  }
+}
+
+extension AsFloat64List on Pointer<Double> {
+  Float64List asTypedList(int length) {
+    final wrapper = Float64ArrayWrapper(
+      NativeLibrary.instance.HEAPU8.buffer,
+      addr,
+      length,
+    ) as JSFloat64Array;
     return wrapper.toDart;
   }
 }

@@ -175,7 +175,7 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
         } else if (m.type is BooleanType) {
           return '$inner.toDartInt == 1';
         } else if (m.type is BindingType) {
-          return '${m.type.getInteropDartType(w)}(Pointer<${m.type.getInteropDartType(w)}>(addr))';
+          return '${m.type.getInteropDartType(w)}($addr.cast())';
         }
         return inner;
       }
@@ -190,7 +190,9 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
           // For enum members, we just convert the int value to JS.
           return '$inner.toJS';
         } else if (m.type is BindingType) {
-          return '${inner}.address.toJS';
+          return '${inner}.address.addr.toJS';
+        } else if (m.type is PointerType) {
+          return '$inner.addr.toJS';
         }
         return '$inner.toJS';
       }
@@ -198,10 +200,10 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
       // Determine the property name to use for the int getter/setter.
       // For enum types, use 'AsInt' suffix so the enum getter can reference it.
       final isEnumClass = m.type is EnumClass;
-      final generateAsInt = isEnumClass ? (m.type as EnumClass).generateAsInt : true;
-      final propertyName = (isEnumClass && !generateAsInt)
-          ? '${memberName}AsInt'
-          : memberName;
+      final generateAsInt =
+          isEnumClass ? (m.type as EnumClass).generateAsInt : true;
+      final propertyName =
+          (isEnumClass && !generateAsInt) ? '${memberName}AsInt' : memberName;
 
       s.write('''
 $dartType get $propertyName {
@@ -230,8 +232,8 @@ set $propertyName($dartType val) {
 
     s.write('''
 static Pointer<$name> stackAlloc() {
-    return Pointer<$name>(NativeLibrary.instance.stackAlloc<$name>($sizeInBytes));
-  }
+    return NativeLibrary.instance.stackAlloc<$name>($sizeInBytes);
+}
   ''');
 
     s.write('}\n\n');

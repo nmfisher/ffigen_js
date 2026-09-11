@@ -87,17 +87,49 @@ extension StructAllocator<T extends NativeType> on Struct {
 
 ### TypedData pointers
 
-For `Uint8List`, `Int16List`, `Uint16List`, `Int32List`, `Int64List`,
-`Uint32List`, `Float32List`, and `Float64List` values that are not already
-backed by Emscripten memory, `.address` allocates Wasm memory and copies the
-list's current contents into it. This is a one-way copy intended for immediate
-input to a synchronous native call. Native writes through the returned pointer
-are not copied back to the original Dart list.
+`Pointer<T>` is an integer byte address. Generated bindings pass pointers
+directly to JavaScript, without allocating a scope or boxing a Dart descriptor.
+For ordinary Dart typed lists, use an explicit synchronous buffer scope:
 
-Copied inputs smaller than 32 KiB use Emscripten stack allocation; larger
-inputs use `malloc`. Bracket temporary input allocations with `stackSave` and
-`stackRestore`, and call `free()` on the returned pointer (it releases the
-`malloc` allocation when one was used).
+```dart
+final data = Uint8List.fromList([1, 2, 3]);
+final result = withNativeBuffers([data], (scope) {
+  final pointer = scope.addressOf<Uint8>(data);
+  nativeFunction(pointer, data.length);
+  return anotherNativeFunction(pointer); // Reuse the same allocation.
+});
+```
+
+Register all buffers up front, including any aliased views. The scope copies
+them into one allocation: the Emscripten stack when the combined aligned size
+is at most 32 KiB, otherwise the heap. Aliases retain their relative offsets and
+alignment. Choose the native type in `addressOf<T>` to match the function's
+parameter. An empty buffer has address zero.
+
+Writes are copied back when the scope exits, even if its body throws, and the
+temporary allocation is released in `finally`. Use `copyBack: false` for
+input-only or unmodifiable buffers. Native writes to temporary copies are not
+visible in the original Dart lists during the scope, including during callbacks.
+Changes to the original lists during the scope can be overwritten by copy-back.
+Callbacks may open nested scopes; use Wasm-backed views when they need to share
+live data with native code.
+
+The body must be synchronous. Temporary pointers and views must not escape it
+or be retained by native code. Closing a stack-backed scope also releases stack
+allocations made inside it, including structs returned by generated functions.
+Copy their field values into Dart objects before leaving the scope.
+
+Ordinary Dart lists' `.address` throws with guidance to use `withNativeBuffers`.
+Wasm-backed lists' `.address` returns their existing integer address. Registering
+a Wasm-backed list in a scope borrows it without allocation, copying, or freeing;
+`copyBack: false` does not prevent native writes to such a view.
+
+This explicit helper is a web API; shared calling code needs an equivalent
+native allocation helper. `functions.leaf` only affects native FFI generation
+and is not required by the JavaScript bindings.
+
+Allocate retained memory explicitly with `malloc`, copy the data into an
+`asTypedList` view, and free the pointer when the native borrow ends.
 
 For native output, use a typed-list view over Emscripten memory. The
 `makeUint8List`, `makeInt16List`, `makeUint16List`, `makeInt32List`,

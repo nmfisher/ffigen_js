@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:ffi';
-
 import '../code_generator.dart';
 
 import 'binding_string.dart';
@@ -233,8 +231,7 @@ class Func extends Binding {
         userReturnType = ptrType.getDartType(w);
       }
 
-      interopReturnTypeConstructors
-          .add('return ${functionType.returnType.getDartType(w)}(result);');
+      interopReturnTypeConstructors.add('return result.cast();');
     } else if (functionType.returnType is EnumClass &&
         !(functionType.returnType as EnumClass).generateAsInt) {
       interopReturnTypeConstructors.add(
@@ -271,7 +268,7 @@ class Func extends Binding {
           return '${p.name}.cast()';
         }
 
-        return '${p.name}'; // as ${p.type.getWasmInteropType(w)}';
+        return p.name;
       }
 
       if (p.type is EnumClass) {

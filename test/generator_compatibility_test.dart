@@ -27,9 +27,127 @@ void main() {
     expect(externalBinding, greaterThanOrEqualTo(0));
     expect(publicWrapper, greaterThan(externalBinding));
     expect(output, isNot(contains('class NativeLibrary')));
+    expect(output, isNot(contains('withNativeCall')));
     expect(
       output,
       contains('GeneratedBindings.instance._addOne(value)'),
     );
+  });
+
+  test('pointer arguments pass directly to the JS binding', () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final int32 = NativeType(SupportedNativeType.int32);
+    final function = Func(
+      name: 'readBytes',
+      returnType: int32,
+      parameters: [
+        Parameter(name: 'data', type: PointerType(uint8)),
+        Parameter(name: 'other', type: PointerType(uint8)),
+        Parameter(name: 'length', type: int32),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(output, isNot(contains('withNative')));
+    expect(
+      output,
+      contains(
+        'GeneratedBindings.instance._readBytes('
+        'data,other,length)',
+      ),
+    );
+    expect(output, isNot(contains('releaseTemporaryTypedDataAddress')));
+  });
+
+  test('void functions pass pointers directly', () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.voidType),
+      parameters: [Parameter(name: 'data', type: PointerType(uint8))],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(
+        output,
+        contains('GeneratedBindings.instance._readBytes('
+            'data)'));
+    expect(output, isNot(contains('withNative')));
+  });
+
+  test('scope parameter passes through without internal names', () {
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.int32),
+      parameters: [
+        Parameter(
+          name: 'scope',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    expect(output, contains('_readBytes(scope)'));
+    expect(output, isNot(contains('scope1')));
+  });
+
+  test('returned structs retain caller-managed stack ownership', () {
+    final result = Struct(name: 'Result', members: [
+      Member(name: 'value', type: NativeType(SupportedNativeType.int32)),
+    ]);
+    final function = Func(
+      name: 'readResult',
+      returnType: result,
+      parameters: [
+        Parameter(
+          name: 'data',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readResult',
+      originalName: 'readResult',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [result],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    final allocation = output.indexOf('final Result_out = Result.stackAlloc()');
+    expect(allocation, greaterThanOrEqualTo(0));
+    expect(allocation, lessThan(output.indexOf('final result =')));
+    expect(output, isNot(contains('withNative')));
+    expect(output, contains('return Result_out.toDart()'));
   });
 }

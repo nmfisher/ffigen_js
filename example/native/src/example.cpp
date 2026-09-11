@@ -87,6 +87,49 @@ int EMSCRIPTEN_KEEPALIVE sum(int a, int b) {
     return a + b;
 }
 
+/** Sums a byte buffer so tests can verify Dart data was copied correctly. */
+int EMSCRIPTEN_KEEPALIVE sum_bytes(const uint8_t *data, size_t length) {
+    int total = 0;
+    for (size_t i = 0; i < length; i++) {
+        total += data[i];
+    }
+    return total;
+}
+
+bool EMSCRIPTEN_KEEPALIVE pointer_is_on_stack(const uint8_t *data) {
+    #ifdef __EMSCRIPTEN__
+    uintptr_t address = (uintptr_t)data;
+    uintptr_t base = (uintptr_t)emscripten_stack_get_base();
+    uintptr_t end = (uintptr_t)emscripten_stack_get_end();
+    return address >= end && address < base;
+    #else
+    return false;
+    #endif
+}
+
+bool EMSCRIPTEN_KEEPALIVE verify_typed_data_alias(uint8_t *data, uint8_t *alias) {
+    if (alias != data + 1) return false;
+    data[1] = 77;
+    return alias[0] == 77;
+}
+
+bool EMSCRIPTEN_KEEPALIVE verify_typed_data_alignment(uint8_t *scope, uint32_t *words) {
+    if ((uintptr_t)words % alignof(uint32_t) != 0) return false;
+    if ((uint8_t *)words != scope + 3) return false;
+    words[0] = 123456;
+    return true;
+}
+
+MyStruct EMSCRIPTEN_KEEPALIVE return_struct_for_address_test(const uint8_t *scope) {
+    return MyStruct{(float)scope[0], nullptr, 42};
+}
+
+void EMSCRIPTEN_KEEPALIVE update_bytes_with_callback(uint8_t *data, void (*callback)()) {
+    data[0] = 11;
+    callback();
+    data[0] += 11;
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }
