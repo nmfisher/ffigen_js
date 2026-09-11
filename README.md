@@ -87,17 +87,22 @@ extension StructAllocator<T extends NativeType> on Struct {
 
 ### TypedData pointers
 
-For `Uint8List`, `Int16List`, `Uint16List`, `Int32List`, `Int64List`,
+For `Int8List`, `Uint8List`, `Int16List`, `Uint16List`, `Int32List`, `Int64List`,
 `Uint32List`, `Float32List`, and `Float64List` values that are not already
 backed by Emscripten memory, `.address` allocates Wasm memory and copies the
-list's current contents into it. This is a one-way copy intended for immediate
-input to a synchronous native call. Native writes through the returned pointer
-are not copied back to the original Dart list.
+list's current contents into it. Generated function wrappers copy native writes
+back to the Dart list and release the temporary allocation after the call,
+including when the call throws. Call it in the same form as a `dart:ffi` leaf
+native function:
 
-Copied inputs smaller than 32 KiB use Emscripten stack allocation; larger
-inputs use `malloc`. Bracket temporary input allocations with `stackSave` and
-`stackRestore`, and call `free()` on the returned pointer (it releases the
-`malloc` allocation when one was used).
+```dart
+nativeFunction(data.address, data.length);
+```
+
+As with `dart:ffi`'s TypedData addresses, native code must not retain this
+pointer after the call. Allocate retained memory explicitly with `malloc`, copy
+the data into an `asTypedList` view, and free the pointer when the native borrow
+ends.
 
 For native output, use a typed-list view over Emscripten memory. The
 `makeUint8List`, `makeInt16List`, `makeUint16List`, `makeInt32List`,

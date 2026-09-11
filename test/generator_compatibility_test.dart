@@ -32,4 +32,43 @@ void main() {
       contains('GeneratedBindings.instance._addOne(value)'),
     );
   });
+
+  test('pointer arguments release temporary TypedData copies after the call',
+      () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final int32 = NativeType(SupportedNativeType.int32);
+    final function = Func(
+      name: 'readBytes',
+      returnType: int32,
+      parameters: [
+        Parameter(name: 'data', type: PointerType(uint8)),
+        Parameter(name: 'other', type: PointerType(uint8)),
+        Parameter(name: 'length', type: int32),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    final nativeCall = output.indexOf(
+        'GeneratedBindings.instance._readBytes(data,other,length)');
+    final finallyBlock = output.indexOf('finally', nativeCall);
+    final releaseOther = output.indexOf(
+        'releaseTemporaryTypedDataAddress(other)', finallyBlock);
+    final releaseData = output.indexOf(
+        'releaseTemporaryTypedDataAddress(data)', finallyBlock);
+
+    expect(nativeCall, greaterThanOrEqualTo(0));
+    expect(finallyBlock, greaterThan(nativeCall));
+    expect(releaseOther, greaterThan(finallyBlock));
+    expect(releaseData, greaterThan(releaseOther));
+  });
 }

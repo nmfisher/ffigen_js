@@ -257,6 +257,11 @@ void main(List<String> args) async {
   assert(makeUint8List(0).address.addr == 0,
       'An empty TypedData value should have a null address');
 
+  NativeLibrary.instance.stackRestore(typedDataStack);
+
+  // Ordinary Dart TypedData is copied for the call, then copied back and
+  // released by the generated wrapper. This is the same call shape as
+  // dart:ffi's leaf Native TypedData.address support.
   final dartUint8 = Uint8List.fromList([17]);
   final dartInt16 = Int16List.fromList([-18]);
   final dartUint16 = Uint16List.fromList([60000]);
@@ -265,226 +270,74 @@ void main(List<String> args) async {
   final dartUint32 = Uint32List.fromList([4000000000]);
   final dartFloat32 = Float32List.fromList([1.25]);
   final dartFloat64 = Float64List.fromList([-2.5]);
-  final dartUint8Address = dartUint8.address;
-  final dartInt16Address = dartInt16.address;
-  final dartUint16Address = dartUint16.address;
-  final dartInt32Address = dartInt32.address;
-  final dartInt64Address = dartInt64.address;
-  final dartUint32Address = dartUint32.address;
-  final dartFloat32Address = dartFloat32.address;
-  final dartFloat64Address = dartFloat64.address;
 
   assert(
       verify_typed_data_inputs_for_address_test(
-        dartUint8Address,
-        dartInt16Address,
-        dartUint16Address,
-        dartInt32Address,
-        dartInt64Address,
-        dartUint32Address,
-        dartFloat32Address,
-        dartFloat64Address,
+        dartUint8.address,
+        dartInt16.address,
+        dartUint16.address,
+        dartInt32.address,
+        dartInt64.address,
+        dartUint32.address,
+        dartFloat32.address,
+        dartFloat64.address,
       ),
       'Ordinary Dart typed lists were not copied into Wasm memory correctly');
-
-  write_uint8_for_address_test(dartUint8Address);
-  write_int16_for_address_test(dartInt16Address);
-  write_uint16_for_address_test(dartUint16Address);
-  write_int32_for_address_test(dartInt32Address);
-  write_int64_for_address_test(dartInt64Address);
-  write_uint32_for_address_test(dartUint32Address);
-  write_float32_for_address_test(dartFloat32Address);
-  write_float64_for_address_test(dartFloat64Address);
+  write_uint8_for_address_test(dartUint8.address);
+  write_int16_for_address_test(dartInt16.address);
+  write_uint16_for_address_test(dartUint16.address);
+  write_int32_for_address_test(dartInt32.address);
+  write_int64_for_address_test(dartInt64.address);
+  write_uint32_for_address_test(dartUint32.address);
+  write_float32_for_address_test(dartFloat32.address);
+  write_float64_for_address_test(dartFloat64.address);
   assert(
-      dartUint8[0] == 17 &&
-          dartInt16[0] == -18 &&
-          dartUint16[0] == 60000 &&
-          dartInt32[0] == -1234567 &&
-          dartInt64[0] == -9007199254740993 &&
-          dartUint32[0] == 4000000000 &&
-          dartFloat32[0] == 1.25 &&
-          dartFloat64[0] == -2.5,
-      'Native writes to copied inputs unexpectedly changed a Dart list');
+      dartUint8[0] == 201 &&
+          dartInt16[0] == -1234 &&
+          dartUint16[0] == 54321 &&
+          dartInt32[0] == -123456789 &&
+          dartInt64[0] == -9007199254740995 &&
+          dartUint32[0] == 3456789012 &&
+          dartFloat32[0] == 12.5 &&
+          dartFloat64[0] == 9876.5,
+      'Native writes were not copied back to ordinary Dart typed lists');
+  final largeInput = Uint8List(64 * 1024)..[0] = 5;
+  assert(sum_bytes(largeInput.address, largeInput.length) == 5,
+      'A large temporary input was not readable by native code');
+  write_uint8_for_address_test(largeInput.address);
+  assert(largeInput[0] == 201,
+      'A native write was not copied back to a large Dart list');
 
-  NativeLibrary.instance.stackRestore(typedDataStack);
-
-  final largeDartUint8 = Uint8List(32 * 1024)..[0] = 99;
-  final largeDartUint8Address = largeDartUint8.address;
-  assert(largeDartUint8Address.asTypedList(1)[0] == 99,
-      'The malloc-backed input was not copied into Wasm memory');
-  write_uint8_for_address_test(largeDartUint8Address);
-  assert(largeDartUint8[0] == 99,
-      'A native write to a malloc-backed copy changed the Dart list');
-  largeDartUint8Address.free();
-
-  // --- usingBytes: scoped Wasm copies for native input buffers ---
-
-  // Ordinary Dart input smaller than 32 KiB: copied via a stack allocation,
-  // reclaimed by restoring the stack marker, and never tracked as a heap copy.
-  final usingBytesStackMarker = NativeLibrary.instance.stackSave();
-  final usingBytesHeapCopies = debugTrackedAddressCopies();
-  final smallInput = Uint8List.fromList(List.generate(100, (i) => i % 256));
-  final smallResult = usingBytes(smallInput, (ptr, length) {
-    assert(length == 100, 'usingBytes reported length $length');
-    return sum_bytes(ptr, length);
-  });
-  assert(smallResult == 4950, 'sum_bytes(smallInput) == $smallResult');
-  assert(debugTrackedAddressCopies() == usingBytesHeapCopies,
-      'usingBytes tracked a heap copy for a small input');
-  assert(NativeLibrary.instance.stackSave() == usingBytesStackMarker,
-      'usingBytes did not restore the Emscripten stack marker');
-
-  // Empty input: nullptr, no copy, no release.
-  final emptyResult =
-      usingBytes(Uint8List(0), (ptr, length) => length * 1000 + ptr.addr);
-  assert(emptyResult == 0, 'usingBytes(Uint8List(0)) returned $emptyResult');
-
-  // A list backed by the Emscripten heap (makeUint8List) is borrowed, not
-  // copied: native writes are visible in the Dart list and the caller keeps
-  // ownership after usingBytes returns.
-  final borrowed = makeUint8List(8);
-  for (var i = 0; i < borrowed.length; i++) {
-    borrowed[i] = 0;
+  // Repeated inputs exceed the fixed Wasm heap if generated wrappers retain
+  // every temporary allocation.
+  for (var i = 0; i < 256; i++) {
+    final batchInput = Uint8List(64 * 1024)..[i % (64 * 1024)] = i % 256;
+    sum_bytes(batchInput.address, batchInput.length);
   }
-  borrowed[2] = 9;
-  final borrowedAddress = usingBytes(borrowed, (ptr, length) => ptr.addr);
-  assert(borrowedAddress == borrowed.offsetInBytes,
-      'usingBytes copied heap-backed data to $borrowedAddress');
-  write_uint8_for_address_test(Pointer<Uint8>(borrowedAddress));
+  // Views already backed by Emscripten memory remain caller-owned.
+  final borrowedMarker = NativeLibrary.instance.stackSave();
+  final borrowed = makeUint8List(8)
+    ..fillRange(0, 8, 0)
+    ..[2] = 9;
+  write_uint8_for_address_test(borrowed.address);
   assert(borrowed[0] == 201,
-      'A native write through usingBytes did not reach the borrowed list');
-  assert(debugTrackedAddressCopies() == usingBytesHeapCopies,
-      'usingBytes tracked a heap copy for borrowed data');
-  final borrowedSum =
-      usingBytes(borrowed, (ptr, length) => sum_bytes(ptr, length));
-  assert(borrowedSum == 210, 'sum_bytes(borrowed) == $borrowedSum');
+      'A native write did not reach an Emscripten-backed list');
+  assert(sum_bytes(borrowed.address, borrowed.length) == 210,
+      'An Emscripten-backed list was not readable after a native call');
+  NativeLibrary.instance.stackRestore(borrowedMarker);
 
-  // A TypedData value that is not a Uint8List goes through the same path via
-  // a byte view. Float64List.fromList([1.0]) is 3F F0 ... in memory.
-  final floatResult = usingBytes(
-      Float64List.fromList([1.0]), (ptr, length) => sum_bytes(ptr, length));
-  assert(floatResult == 303, 'sum_bytes(Float64List([1.0])) == $floatResult');
+  // Data retained beyond one call uses explicit native allocation, as it does
+  // with dart:ffi, and remains valid until its pointer is freed.
+  final retainedPointer = malloc<Uint8>(3);
+  final retained = retainedPointer.asTypedList(3)..setAll(0, [9, 8, 7]);
+  assert(sum_bytes(retainedPointer, retained.length) == 24,
+      'Explicitly allocated data was not readable by native code');
+  write_uint8_for_address_test(retainedPointer);
+  assert(retained[0] == 201,
+      'Explicitly allocated data did not remain backed by Wasm memory');
+  retainedPointer.free();
 
-  // Ordinary Dart input of 32 KiB or more: copied via a tracked heap
-  // allocation that usingBytes releases before returning.
-  final largeInput = Uint8List(32 * 1024)..[0] = 5;
-  final largeResult =
-      usingBytes(largeInput, (ptr, length) => sum_bytes(ptr, length));
-  assert(largeResult == 5, 'sum_bytes(largeInput) == $largeResult');
-  assert(debugTrackedAddressCopies() == usingBytesHeapCopies,
-      'usingBytes leaked a tracked copy of a large input');
-
-  // Repeated large inputs must not accumulate pending copies.
-  for (var i = 0; i < 5; i++) {
-    final batchInput = Uint8List(64 * 1024)..[i] = i + 1;
-    final batchSum =
-        usingBytes(batchInput, (ptr, length) => sum_bytes(ptr, length));
-    assert(batchSum == i + 1, 'sum_bytes(batchInput) == $batchSum');
-  }
-  assert(debugTrackedAddressCopies() == usingBytesHeapCopies,
-      'Repeated usingBytes calls accumulated pending input copies');
-
-  // A body that throws must not leak its copy or the stack frame.
-  final throwMarker = NativeLibrary.instance.stackSave();
-  var threw = false;
-  try {
-    usingBytes(Uint8List(64 * 1024), (ptr, length) {
-      throw StateError('body failure');
-    });
-  } on StateError {
-    threw = true;
-  }
-  assert(threw, 'usingBytes did not propagate the body failure');
-  assert(debugTrackedAddressCopies() == usingBytesHeapCopies,
-      'usingBytes leaked a tracked copy when the body threw');
-  assert(NativeLibrary.instance.stackSave() == throwMarker,
-      'usingBytes did not restore the stack marker when the body threw');
-
-  // TypedData.free releases the copies its address getter created. Before
-  // this change it freed Pointer<Void>(offsetInBytes), which never matched
-  // the tracked allocation for ordinary Dart lists, so it silently did
-  // nothing and every large input leaked.
-  final explicitBefore = debugTrackedAddressCopies();
-  final explicit = Uint8List(48 * 1024)..[1] = 3;
-  final explicitPtr = explicit.address;
-  assert(debugTrackedAddressCopies() == explicitBefore + 1,
-      'address did not register its Wasm-heap copy');
-  assert(sum_bytes(explicitPtr, explicit.length) == 3,
-      'The explicit address copy was not readable');
-  explicit.free();
-  assert(debugTrackedAddressCopies() == explicitBefore,
-      'TypedData.free did not release the address copy');
-
-  print("usingBytes tests passed");
-
-  // --- isWasmBacked: the make*List-allocation check ---
-
-  assert(isWasmBacked(makeUint8List(16)),
-      'A make*List result must report as Emscripten-heap-backed');
-  assert(isWasmBacked(makeFloat32List(16)),
-      'A make*List result of another element type must report as backed');
-  assert(isWasmBacked(Uint8List(0)),
-      'An empty value needs no allocation, so it is trivially backed');
-  assert(!isWasmBacked(Uint8List.fromList([1, 2, 3])),
-      'An ordinary Dart list must not report as Emscripten-heap-backed');
-  assert(!isWasmBacked(Float32List.fromList([1.0, 2.0])),
-      'An ordinary Dart Float32List must not report as backed');
-
-  // --- heapCopy: malloc-backed copy that survives until explicitly freed ---
-
-  final heapCopyBaseline = debugTrackedAddressCopies();
-
-  // Even a tiny input is heap-allocated (never stack), so the copy stays
-  // valid across other native calls, and is released via TypedData.free.
-  final tinyCopy = heapCopy(Uint8List.fromList([9, 8, 7]));
-  assert(isWasmBacked(tinyCopy), 'heapCopy result must be heap-backed');
-  assert(debugTrackedAddressCopies() == heapCopyBaseline + 1,
-      'heapCopy must register a tracked allocation');
-  assert(sum_bytes(tinyCopy.address, 3) == 24,
-      'heapCopy bytes were not readable after another native call');
-  assert(tinyCopy[0] == 9, 'The heapCopy view lost its contents');
-  write_uint8_for_address_test(tinyCopy.address);
-  assert(tinyCopy[0] == 201,
-      'A native write to the heapCopy did not reach the Dart view');
-  tinyCopy.free();
-  assert(debugTrackedAddressCopies() == heapCopyBaseline,
-      'TypedData.free did not release the heapCopy allocation');
-
-  // Typed variants: the copy shares memory with the native side and is
-  // isolated from the source data.
-  final sourceFloats = Float32List.fromList([1.5, -2.5]);
-  final floatsCopy = heapCopy(sourceFloats);
-  assert(isWasmBacked(floatsCopy), 'heapCopy Float32List must be heap-backed');
-  assert(floatsCopy.address.addr == floatsCopy.offsetInBytes,
-      'heapCopy view did not retain its heap address');
-  write_float32_for_address_test(floatsCopy.address.cast<Float32>());
-  assert(floatsCopy[0] == 12.5, 'Native write did not reach the heapCopy view');
-  assert(sourceFloats[0] == 1.5, 'Native writes reached the source data');
-  floatsCopy.free();
-
-  // Int64List is not supported by the heap wrappers and must fail loudly.
-  var unsupported = false;
-  try {
-    heapCopy(Int64List.fromList([1]));
-  } on UnsupportedError {
-    unsupported = true;
-  }
-  assert(unsupported, 'heapCopy(Int64List) should throw UnsupportedError');
-
-  // --- debugCopiedInputs: visibility into non-heap-backed pathway inputs ---
-
-  final copiedBefore = debugCopiedInputs();
-  makeUint8List(8).address; // heap-backed: borrow, no copy
-  assert(debugCopiedInputs() == copiedBefore,
-      'address on heap-backed data must not count as a copy');
-  Uint8List.fromList([1]).address; // ordinary list: copied
-  assert(debugCopiedInputs() == copiedBefore + 1,
-      'address on ordinary Dart data must count as a copy');
-  heapCopy(Uint8List.fromList([2])); // explicit copy counts too
-  assert(
-      debugCopiedInputs() == copiedBefore + 2, 'heapCopy must count as a copy');
-
-  print("isWasmBacked/heapCopy tests passed");
+  print("call-scoped TypedData address tests passed");
 
   print("All TypedData accessor tests passed");
 

@@ -2,8 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import 'dart:ffi';
-
 import '../code_generator.dart';
 
 import 'binding_string.dart';
@@ -294,9 +292,29 @@ class Func extends Binding {
       return '${p.name}';
     }).join(',');
 
+    final temporaryPointerArguments = userArguments
+        .where(
+            (p) => p.type is PointerType || p.type.typealiasType is PointerType)
+        .map((p) => p.name)
+        .toList()
+        .reversed;
+    final releaseTemporaryPointers = temporaryPointerArguments
+        .map((name) => 'releaseTemporaryTypedDataAddress($name);')
+        .join('\n');
+
     if (writeModuleBinding) {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
+    } else if (releaseTemporaryPointers.isNotEmpty) {
+      s.write('''$userReturnType $userFunctionName($userArgsString) {
+              try {
+                ${interopArgumentConstructors.join("\n")}
+                final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
+                ${interopReturnTypeConstructors.join("\n")}
+              } finally {
+                $releaseTemporaryPointers
+              }
+  }''');
     } else {
       s.write('''$userReturnType $userFunctionName($userArgsString) {
               ${interopArgumentConstructors.join("\n")}
