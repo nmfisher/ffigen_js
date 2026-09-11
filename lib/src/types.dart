@@ -34,14 +34,59 @@ int sizeOf<T extends NativeType>() {
   throw UnsupportedError('sizeOf not supported for $T');
 }
 
-extension type const Pointer<T extends NativeType>(int addr) implements int {
-  const Pointer.fromAddress(int address) : addr = address;
-  Pointer<T> operator +(int numElements) =>
-      Pointer<T>(this.addr + (numElements * sizeOf<T>()));
-  Pointer<U> cast<U extends NativeType>() => this as Pointer<U>;
+final class _DeferredTypedDataPointer {
+  final TypedData data;
+  final int additionalByteOffset;
+
+  const _DeferredTypedDataPointer(this.data, this.additionalByteOffset);
+}
+
+/// A pointer passed to or returned from Wasm.
+///
+/// Raw pointers are represented by a JavaScript number. A TypedData `address`
+/// is represented by a boxed Dart descriptor until a generated function
+/// wrapper materializes it for the duration of the native call.
+extension type Pointer<T extends NativeType>._(JSAny _value) implements JSAny {
+  Pointer(int address) : this._(address.toJS);
+  Pointer.fromAddress(int address) : this(address);
+
+  Pointer._fromTypedData(TypedData data)
+      : this._(_DeferredTypedDataPointer(data, 0).toJSBox);
+
+  Pointer._fromDeferred(_DeferredTypedDataPointer pointer)
+      : this._(pointer.toJSBox);
+
+  bool get _isDeferred => !_value.typeofEquals('number');
+
+  _DeferredTypedDataPointer get _deferred =>
+      (_value as JSBoxedDartObject).toDart as _DeferredTypedDataPointer;
+
+  int get addr {
+    if (_isDeferred) {
+      throw StateError(
+        'A TypedData address is only available during a generated native call.',
+      );
+    }
+    return (_value as JSNumber).toDartInt;
+  }
+
+  Pointer<T> operator +(int numElements) {
+    final byteOffset = numElements * sizeOf<T>();
+    if (!_isDeferred) return Pointer<T>(addr + byteOffset);
+    final deferred = _deferred;
+    return Pointer<T>._fromDeferred(
+      _DeferredTypedDataPointer(
+        deferred.data,
+        deferred.additionalByteOffset + byteOffset,
+      ),
+    );
+  }
+
+  Pointer<U> cast<U extends NativeType>() => Pointer<U>._(_value);
+
   void free() {
-    _temporaryTypedDataCopies.remove(addr);
-    if (_heapAllocations.remove(this)) {
+    final address = addr;
+    if (_heapAllocations.remove(address)) {
       _lib._free(this);
     }
   }
@@ -84,13 +129,13 @@ Pointer<NativeFunction<T>> addFunction<T>(JSFunction fn, String signature) {
 
 abstract class Char extends NativeType {
   static Pointer<Char> stackAlloc(int count) {
-    return Pointer<Char>(_lib._stackAlloc<Char>(4 * count));
+    return _lib._stackAlloc<Char>(4 * count);
   }
 }
 
 abstract class Bool extends NativeType {
   static Pointer<Bool> stackAlloc(int count) {
-    return Pointer<Bool>(_lib._stackAlloc<Char>(4 * count));
+    return _lib._stackAlloc<Char>(4 * count).cast();
   }
 }
 
@@ -325,7 +370,7 @@ late NativeLibrary _lib;
 
 Pointer<T> malloc<T extends NativeType>(int numBytes) {
   final pointer = _lib._malloc<T>(numBytes);
-  _heapAllocations.add(pointer);
+  _heapAllocations.add(pointer.addr);
   return pointer;
 }
 
@@ -365,7 +410,7 @@ extension DartBigIntExtension on BigInt {
 Uint8List makeUint8List(int length) {
   var ptr = stackAlloc<Uint8>(length);
   var wrapper =
-      Uint8ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint8Array;
+      Uint8ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint8Array;
   var uint8List = wrapper.toDart;
   return uint8List;
 }
@@ -373,7 +418,7 @@ Uint8List makeUint8List(int length) {
 Int16List makeInt16List(int length) {
   var ptr = stackAlloc<Int16>(length * 2);
   var wrapper =
-      Int16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt16Array;
+      Int16ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSInt16Array;
   var int16List = wrapper.toDart;
   return int16List;
 }
@@ -381,7 +426,7 @@ Int16List makeInt16List(int length) {
 Uint16List makeUint16List(int length) {
   var ptr = stackAlloc<Uint16>(length * 2);
   var wrapper =
-      Uint16ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint16Array;
+      Uint16ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint16Array;
   var uint16List = wrapper.toDart;
   return uint16List;
 }
@@ -393,7 +438,7 @@ IntPtrList makeIntPtrList(int length) {
 Uint32List makeUint32List(int length) {
   var ptr = stackAlloc<Uint32>(length * 4);
   var wrapper =
-      Uint32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSUint32Array;
+      Uint32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSUint32Array;
   var uint32List = wrapper.toDart;
   return uint32List;
 }
@@ -401,7 +446,7 @@ Uint32List makeUint32List(int length) {
 Int32List makeInt32List(int length) {
   var ptr = stackAlloc<Int32>(length * 4);
   var wrapper =
-      Int32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSInt32Array;
+      Int32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length) as JSInt32Array;
   var int32List = wrapper.toDart;
   return int32List;
 }
@@ -414,16 +459,16 @@ Int64List makeInt64List(int length) {
 
 Float32List makeFloat32List(int length) {
   var ptr = stackAlloc<Float32>(length * 4);
-  var wrapper =
-      Float32ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat32Array;
+  var wrapper = Float32ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length)
+      as JSFloat32Array;
   var f32List = wrapper.toDart;
   return f32List;
 }
 
 Float64List makeFloat64List(int length) {
   var ptr = stackAlloc<Float64>(length * 8);
-  var wrapper =
-      Float64ArrayWrapper(_lib.HEAPU8.buffer, ptr, length) as JSFloat64Array;
+  var wrapper = Float64ArrayWrapper(_lib.HEAPU8.buffer, ptr.addr, length)
+      as JSFloat64Array;
   var f64List = wrapper.toDart;
   return f64List;
 }
@@ -519,45 +564,152 @@ abstract base class Union extends NativeType {
   Union(this._address);
 }
 
-final _heapAllocations = <Pointer>{};
+final _heapAllocations = <int>{};
 
-final class _TemporaryTypedDataCopy {
-  final Uint8List source;
-  final Pointer<Uint8> pointer;
-
-  _TemporaryTypedDataCopy(this.source, this.pointer);
+/// Returns [pointer] when it is already a raw Wasm address.
+///
+/// Generated non-leaf functions use this to reject TypedData addresses, which
+/// have the same leaf-call restriction as `dart:ffi`.
+Pointer<T> rawPointer<T extends NativeType>(Pointer<T> pointer) {
+  if (pointer._isDeferred) {
+    throw StateError(
+      'TypedData.address can only be passed to a generated function configured '
+      'as leaf.',
+    );
+  }
+  return pointer;
 }
 
-final _temporaryTypedDataCopies = <int, _TemporaryTypedDataCopy>{};
+final class _TypedDataRange {
+  final ByteBuffer buffer;
+  int start;
+  int end;
+  Pointer<Uint8>? pointer;
+  bool heapAllocated = false;
 
-Pointer<T> _copyTypedDataToWasm<T extends NativeType>(TypedData data) {
-  final source = Uint8List.sublistView(data);
-  final pointer = malloc<T>(source.lengthInBytes);
-  try {
-    pointer.cast<Uint8>().asTypedList(source.length).setAll(0, source);
-    _temporaryTypedDataCopies[pointer.addr] =
-        _TemporaryTypedDataCopy(source, pointer.cast());
-    return pointer;
-  } catch (_) {
-    pointer.free();
-    rethrow;
+  _TypedDataRange(this.buffer, this.start, this.end);
+
+  int get length => end - start;
+
+  Uint8List get source => buffer.asUint8List(start, length);
+}
+
+/// Materializes deferred TypedData pointers for one generated native call.
+///
+/// Generated wrappers create a scope only when a function has pointer
+/// arguments. Raw Wasm pointers pass through unchanged. TypedData pointers
+/// sharing a backing buffer share one Wasm allocation, preserving pointer
+/// aliasing and overlapping views.
+final class NativeCallScope {
+  static const _maximumStackBytes = 32 * 1024;
+
+  final _ranges = <_TypedDataRange>[];
+  final _pointerRanges = <_DeferredTypedDataPointer, _TypedDataRange>{};
+  Pointer<Void>? _stackMarker;
+  bool _closed = false;
+
+  NativeCallScope(Iterable<Pointer> pointers) {
+    try {
+      _prepare(pointers);
+    } catch (_) {
+      _close(copyBack: false);
+      rethrow;
+    }
+  }
+
+  void _prepare(Iterable<Pointer> pointers) {
+    for (final pointer in pointers) {
+      if (!pointer._isDeferred) continue;
+      final deferred = pointer._deferred;
+      final data = deferred.data;
+      final start = data.offsetInBytes;
+      final end = start + data.lengthInBytes;
+      _TypedDataRange? range;
+      for (final candidate in _ranges) {
+        if (candidate.buffer == data.buffer) {
+          range = candidate;
+          break;
+        }
+      }
+      if (range == null) {
+        range = _TypedDataRange(data.buffer, start, end);
+        _ranges.add(range);
+      } else {
+        if (start < range.start) range.start = start;
+        if (end > range.end) range.end = end;
+      }
+      _pointerRanges[deferred] = range;
+    }
+
+    if (_ranges.isEmpty) return;
+
+    _stackMarker = _lib.stackSave();
+    var stackBytes = 0;
+    for (final range in _ranges) {
+      // Emscripten aligns stack allocations to 16 bytes. Account for the
+      // aligned size so a collection of small views cannot exceed the limit.
+      final alignedLength = (range.length + 15) & ~15;
+      final useStack =
+          stackBytes + alignedLength <= NativeCallScope._maximumStackBytes;
+      final pointer = useStack
+          ? stackAlloc<Uint8>(range.length)
+          : malloc<Uint8>(range.length);
+      range.pointer = pointer;
+      range.heapAllocated = !useStack;
+      if (useStack) stackBytes += alignedLength;
+      pointer.asTypedList(range.length).setAll(0, range.source);
+    }
+  }
+
+  /// Returns the raw Wasm pointer used for this call.
+  Pointer<T> addressOf<T extends NativeType>(Pointer<T> pointer) {
+    if (!pointer._isDeferred) return pointer;
+    final deferred = pointer._deferred;
+    final range = _pointerRanges[deferred]!;
+    final address = range.pointer!.addr +
+        deferred.data.offsetInBytes -
+        range.start +
+        deferred.additionalByteOffset;
+    return Pointer<T>(address);
+  }
+
+  void close() => _close(copyBack: true);
+
+  void _close({required bool copyBack}) {
+    if (_closed) return;
+    _closed = true;
+    try {
+      if (copyBack) {
+        for (final range in _ranges) {
+          final pointer = range.pointer;
+          if (pointer != null) {
+            range.source.setAll(0, pointer.asTypedList(range.length));
+          }
+        }
+      }
+    } finally {
+      try {
+        for (final range in _ranges) {
+          if (range.heapAllocated) range.pointer?.free();
+        }
+      } finally {
+        final stackMarker = _stackMarker;
+        if (stackMarker != null) _lib.stackRestore(stackMarker);
+      }
+    }
   }
 }
 
-/// Completes a temporary TypedData address passed to a generated binding.
-///
-/// Generated function wrappers call this after the native call. If [pointer]
-/// came from an ordinary Dart TypedData value's `address` getter, native writes
-/// are copied back to that value and the temporary Wasm allocation is freed.
-/// Caller-allocated and already-Wasm-backed pointers are left unchanged.
-void releaseTemporaryTypedDataAddress(Pointer pointer) {
-  final copy = _temporaryTypedDataCopies.remove(pointer.addr);
-  if (copy == null) return;
+/// Runs a generated native call with all deferred pointers materialized.
+R withNativeCall<R>(
+  Iterable<Pointer> pointers,
+  R Function(NativeCallScope scope) body,
+) {
+  final scope = NativeCallScope(pointers);
   try {
-    final wasmBytes = copy.pointer.asTypedList(copy.source.length);
-    copy.source.setAll(0, wasmBytes);
+    return body(scope);
   } finally {
-    copy.pointer.free();
+    scope.close();
   }
 }
 
@@ -661,7 +813,7 @@ extension Uint8ListExtension on Uint8List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Uint8>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Uint8>(this);
+    return Pointer<Uint8>._fromTypedData(this);
   }
 }
 
@@ -670,7 +822,7 @@ extension Int8ListExtension on Int8List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Int8>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Int8>(this);
+    return Pointer<Int8>._fromTypedData(this);
   }
 }
 
@@ -679,7 +831,7 @@ extension Float32ListExtension on Float32List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Float32>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Float32>(this);
+    return Pointer<Float32>._fromTypedData(this);
   }
 }
 
@@ -688,7 +840,7 @@ extension Int16ListExtension on Int16List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Int16>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Int16>(this);
+    return Pointer<Int16>._fromTypedData(this);
   }
 }
 
@@ -697,7 +849,7 @@ extension Uint16ListExtension on Uint16List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Uint16>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Uint16>(this);
+    return Pointer<Uint16>._fromTypedData(this);
   }
 }
 
@@ -706,7 +858,7 @@ extension UInt32ListExtension on Uint32List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Uint32>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Uint32>(this);
+    return Pointer<Uint32>._fromTypedData(this);
   }
 }
 
@@ -715,7 +867,7 @@ extension Int32ListExtension on Int32List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Int32>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Int32>(this);
+    return Pointer<Int32>._fromTypedData(this);
   }
 }
 
@@ -725,7 +877,7 @@ extension Int64ListExtension on Int64List {
     final jsArray = bytes.toJS;
     final heapAddress = _wasmHeapAddress<Int64>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Int64>(this);
+    return Pointer<Int64>._fromTypedData(this);
   }
 }
 
@@ -734,7 +886,7 @@ extension Float64ListExtension on Float64List {
     final jsArray = toJS;
     final heapAddress = _wasmHeapAddress<Float64>(this, jsArray);
     if (heapAddress != null) return heapAddress;
-    return _copyTypedDataToWasm<Float64>(this);
+    return Pointer<Float64>._fromTypedData(this);
   }
 }
 

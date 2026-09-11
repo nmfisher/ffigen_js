@@ -33,8 +33,7 @@ void main() {
     );
   });
 
-  test('pointer arguments release temporary TypedData copies after the call',
-      () {
+  test('pointer arguments are materialized in a native call scope', () {
     final uint8 = NativeType(SupportedNativeType.uint8);
     final int32 = NativeType(SupportedNativeType.int32);
     final function = Func(
@@ -45,6 +44,40 @@ void main() {
         Parameter(name: 'other', type: PointerType(uint8)),
         Parameter(name: 'length', type: int32),
       ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+      isLeaf: true,
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(
+      output,
+      contains('withNativeCall(<Pointer>[data,other], (scope)'),
+    );
+    expect(
+      output,
+      contains(
+        'GeneratedBindings.instance._readBytes('
+        'scope.addressOf(data),scope.addressOf(other),length)',
+      ),
+    );
+    expect(output, isNot(contains('releaseTemporaryTypedDataAddress')));
+  });
+
+  test('non-leaf pointer arguments require an existing Wasm address', () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.voidType),
+      parameters: [Parameter(name: 'data', type: PointerType(uint8))],
       usr: 'c:@F@readBytes',
       originalName: 'readBytes',
     );
@@ -58,17 +91,10 @@ void main() {
 
     final output = writer.generate();
 
-    final nativeCall = output.indexOf(
-        'GeneratedBindings.instance._readBytes(data,other,length)');
-    final finallyBlock = output.indexOf('finally', nativeCall);
-    final releaseOther = output.indexOf(
-        'releaseTemporaryTypedDataAddress(other)', finallyBlock);
-    final releaseData = output.indexOf(
-        'releaseTemporaryTypedDataAddress(data)', finallyBlock);
-
-    expect(nativeCall, greaterThanOrEqualTo(0));
-    expect(finallyBlock, greaterThan(nativeCall));
-    expect(releaseOther, greaterThan(finallyBlock));
-    expect(releaseData, greaterThan(releaseOther));
+    expect(
+        output,
+        contains('GeneratedBindings.instance._readBytes('
+            'rawPointer(data))'));
+    expect(output, isNot(contains('withNativeCall')));
   });
 }

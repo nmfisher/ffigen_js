@@ -32,6 +32,7 @@ import 'writer.dart';
 class Func extends Binding {
   final FunctionType functionType;
   final bool exposeFunctionTypedefs;
+  final bool isLeaf;
 
   /// Contains typealias for function type if [exposeFunctionTypedefs] is true.
   Typealias? _exposedFunctionTypealias;
@@ -45,6 +46,7 @@ class Func extends Binding {
       List<Parameter>? parameters,
       List<Parameter>? varArgParameters,
       this.exposeFunctionTypedefs = false,
+      this.isLeaf = false,
       super.isInternal,
       required super.usr,
       required super.originalName})
@@ -231,8 +233,7 @@ class Func extends Binding {
         userReturnType = ptrType.getDartType(w);
       }
 
-      interopReturnTypeConstructors
-          .add('return ${functionType.returnType.getDartType(w)}(result);');
+      interopReturnTypeConstructors.add('return result.cast();');
     } else if (functionType.returnType is EnumClass &&
         !(functionType.returnType as EnumClass).generateAsInt) {
       interopReturnTypeConstructors.add(
@@ -259,17 +260,31 @@ class Func extends Binding {
     final interopArgsString = interopArguments
         .map((p) => '${p.type.getInteropDartType(w)} ${p.name},\n')
         .join('');
+    final pointerArguments = userArguments
+        .where(
+          (p) => p.type is PointerType || p.type.typealiasType is PointerType,
+        )
+        .map((p) => p.name)
+        .toList();
+    final scopedPointerArguments = isLeaf ? pointerArguments : const <String>[];
+    final scopedPointerArgumentNames = scopedPointerArguments.toSet();
     final invokeInteropArgsString = interopArguments.map((p) {
+      final scopedArgument = scopedPointerArgumentNames.contains(p.name)
+          ? 'scope.addressOf(${p.name})'
+          : pointerArguments.contains(p.name)
+              ? 'rawPointer(${p.name})'
+              : p.name;
+
       if (p.type.baseType is NativeFunc) {
-        return '${p.name}.cast()';
+        return '$scopedArgument.cast()';
       }
 
       if (p.type is PointerType) {
         if ((p.type.baseType is Struct)) {
-          return '${p.name}.cast()';
+          return '$scopedArgument.cast()';
         }
 
-        return '${p.name}'; // as ${p.type.getWasmInteropType(w)}';
+        return scopedArgument;
       }
 
       if (p.type is EnumClass) {
@@ -286,34 +301,22 @@ class Func extends Binding {
 
       if (p.type is Typealias && p.type.typealiasType is PointerType) {
         var pointerType = p.type.typealiasType as PointerType;
-        return '${p.name} as ${pointerType.getWasmInteropType(w)}';
+        return '$scopedArgument as ${pointerType.getWasmInteropType(w)}';
       }
 
       return '${p.name}';
     }).join(',');
 
-    final temporaryPointerArguments = userArguments
-        .where(
-            (p) => p.type is PointerType || p.type.typealiasType is PointerType)
-        .map((p) => p.name)
-        .toList()
-        .reversed;
-    final releaseTemporaryPointers = temporaryPointerArguments
-        .map((name) => 'releaseTemporaryTypedDataAddress($name);')
-        .join('\n');
-
     if (writeModuleBinding) {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
-    } else if (releaseTemporaryPointers.isNotEmpty) {
+    } else if (scopedPointerArguments.isNotEmpty) {
       s.write('''$userReturnType $userFunctionName($userArgsString) {
-              try {
+              return withNativeCall(<Pointer>[${scopedPointerArguments.join(',')}], (scope) {
                 ${interopArgumentConstructors.join("\n")}
                 final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
                 ${interopReturnTypeConstructors.join("\n")}
-              } finally {
-                $releaseTemporaryPointers
-              }
+              });
   }''');
     } else {
       s.write('''$userReturnType $userFunctionName($userArgsString) {

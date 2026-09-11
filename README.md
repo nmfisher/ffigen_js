@@ -89,19 +89,31 @@ extension StructAllocator<T extends NativeType> on Struct {
 
 For `Int8List`, `Uint8List`, `Int16List`, `Uint16List`, `Int32List`, `Int64List`,
 `Uint32List`, `Float32List`, and `Float64List` values that are not already
-backed by Emscripten memory, `.address` allocates Wasm memory and copies the
-list's current contents into it. Generated function wrappers copy native writes
-back to the Dart list and release the temporary allocation after the call,
-including when the call throws. Call it in the same form as a `dart:ffi` leaf
-native function:
+backed by Emscripten memory, `.address` returns a deferred pointer without
+allocating Wasm memory. A generated function configured as `leaf` materializes
+that pointer for the native call, copies native writes back, and releases the
+temporary memory afterwards, including when the call throws. Small call inputs
+use the Emscripten stack; larger inputs use the heap. Call it in the same form
+as a `dart:ffi` leaf native function:
 
 ```dart
 nativeFunction(data.address, data.length);
 ```
 
+The function must be included in the same `leaf` configuration used by
+`ffigen`:
+
+```yaml
+functions:
+  leaf:
+    include:
+      - nativeFunction
+```
+
 As with `dart:ffi`'s TypedData addresses, native code must not retain this
-pointer after the call. Allocate retained memory explicitly with `malloc`, copy
-the data into an `asTypedList` view, and free the pointer when the native borrow
+pointer after the call, and `.address` should be used directly as a leaf
+function argument. Allocate retained memory explicitly with `malloc`, copy the
+data into an `asTypedList` view, and free the pointer when the native borrow
 ends.
 
 For native output, use a typed-list view over Emscripten memory. The

@@ -70,40 +70,39 @@ class FunctionType extends Type {
     return '${returnType.getNativeType()} (*$varName)(${arg.join(', ')})';
   }
 
-    String get wasmSignature {
-    var ft = this is Typealias
-        ? typealiasType as FunctionType
-        : this as FunctionType;
-    var signature = '${ft.returnType.wasmType}';
-    
-    for (final param in ft.parameters) {
+  String get wasmSignature {
+    var signature = '${returnType.wasmType}';
+
+    for (final param in parameters) {
       signature += param.type.wasmType;
     }
     return signature;
   }
 
   static final _written = <String>{};
-  
+
   String getExtensionMethod(Writer w, int index) {
     final s = StringBuffer();
     final originalType = getDartType(w); //getInteropDartType(w);
-    final targetType = originalType.replaceAll(RegExp(r"Function\(Pointer<.*"), "Function(Pointer<T>)");
-    if(_written.contains(targetType)) {
+    final targetType = originalType.replaceAll(
+        RegExp(r"Function\(Pointer<.*"), "Function(Pointer<T>)");
+    if (_written.contains(targetType)) {
       return "";
     }
     _written.add(targetType);
-    
-    s.write('''extension NativeFunctionPointer$index<T extends NativeType> on $targetType { 
+
+    s.write(
+        '''extension NativeFunctionPointer$index<T extends NativeType> on $targetType {
 
     Pointer<NativeFunction<$originalType>> addFunction() {
-      return Pointer<NativeFunction<$originalType>>(NativeLibrary.instance.addFunction<$originalType>(this.toJS, '${wasmSignature}')).cast();
+      return NativeLibrary.instance.addFunction<$originalType>(this.toJS, '${wasmSignature}').cast();
   }
     }
   
     ''');
     return s.toString();
   }
-    
+
   @override
   String cacheKey() {
     final ck = _getTypeImpl(false, (Type t) => t.cacheKey());

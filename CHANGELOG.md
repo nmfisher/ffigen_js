@@ -1,8 +1,14 @@
 ## 0.0.16-pre
 
-- Makes ordinary Dart `TypedData.address` values call-scoped, matching their
-  `dart:ffi` usage. Generated function wrappers copy native writes back to the
-  Dart list and release the temporary Wasm allocation in `finally`.
+- Makes ordinary Dart `TypedData.address` values deferred and call-scoped,
+  matching their `dart:ffi` usage. Generated leaf function wrappers materialize
+  them in Wasm memory, copy native writes back, and always release the call
+  scope.
+- Uses the Emscripten stack for small call scopes and temporary heap allocations
+  for larger inputs. TypedData views sharing a backing buffer also share their
+  native allocation, preserving aliases and overlapping writes.
+- Honors `functions.leaf` when generating JavaScript bindings, using it to
+  identify the native calls where deferred TypedData addresses are valid.
 - Keeps addresses of Emscripten-backed lists and explicitly allocated pointers
   caller-owned across generated calls.
 - Tracks public `malloc` results so `Pointer.free()` releases them.

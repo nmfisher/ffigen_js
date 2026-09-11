@@ -80,6 +80,8 @@ bool verify_typed_data_inputs_for_address_test(
     double *float64_value);
 int sum(int a, int b);
 int sum_bytes(const uint8_t *data, size_t length);
+bool pointer_is_on_stack(const uint8_t *data);
+bool verify_typed_data_alias(uint8_t *data, uint8_t *alias);
 
 INTTYPE sum_with_typedef(INTTYPE a, INTTYPE b);
 int subtract(int *a, int b);

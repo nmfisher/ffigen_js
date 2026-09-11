@@ -56,10 +56,9 @@ List<Func> parseFunctionDeclaration(clang_types.CXCursor cursor) {
       /// If [paramName] is null or empty, its set to `arg$i` by code_generator.
       parameters.add(
         Parameter(
-          originalName: paramName,
-          name: config.functionDecl.renameMember(decl, paramName),
-          type: paramType
-        ),
+            originalName: paramName,
+            name: config.functionDecl.renameMember(decl, paramName),
+            type: paramType),
       );
     }
 
@@ -117,10 +116,10 @@ List<Func> parseFunctionDeclaration(clang_types.CXCursor cursor) {
         originalName: funcName,
         returnType: returnType,
         parameters: parameters,
-        varArgParameters: vaFunc.types
-            .map((ta) => Parameter(type: ta, name: 'va'))
-            .toList(),
+        varArgParameters:
+            vaFunc.types.map((ta) => Parameter(type: ta, name: 'va')).toList(),
         exposeFunctionTypedefs: config.shouldExposeFunctionTypedef(decl),
+        isLeaf: config.isLeafFunction(decl),
       ));
     }
     bindingsIndex.addFuncToSeen(funcUsr, funcs.last);

@@ -53,7 +53,7 @@ void main(List<String> args) async {
   var ptr = MyStruct.stackAlloc();
   var struct = ptr.toDart();
   struct.a = 20.0;
-  struct.b = Pointer<Char>(0 as Pointer<Char>);
+  struct.b = Pointer<Char>(0);
   struct.c = 8;
 
   assert(ptr.toDart().a == 20.0, ptr.toDart().a);
@@ -283,6 +283,8 @@ void main(List<String> args) async {
         dartFloat64.address,
       ),
       'Ordinary Dart typed lists were not copied into Wasm memory correctly');
+  assert(pointer_is_on_stack(dartUint8.address),
+      'A small deferred TypedData value was not materialized on the stack');
   write_uint8_for_address_test(dartUint8.address);
   write_int16_for_address_test(dartInt16.address);
   write_uint16_for_address_test(dartUint16.address);
@@ -302,11 +304,41 @@ void main(List<String> args) async {
           dartFloat64[0] == 9876.5,
       'Native writes were not copied back to ordinary Dart typed lists');
   final largeInput = Uint8List(64 * 1024)..[0] = 5;
+  assert(!pointer_is_on_stack(largeInput.address),
+      'A large deferred TypedData value was not materialized on the heap');
   assert(sum_bytes(largeInput.address, largeInput.length) == 5,
       'A large temporary input was not readable by native code');
   write_uint8_for_address_test(largeInput.address);
   assert(largeInput[0] == 201,
       'A native write was not copied back to a large Dart list');
+
+  // Separate address expressions over the same backing buffer must resolve to
+  // one allocation so native pointer identity and overlapping writes agree.
+  final aliasedData = Uint8List.fromList([1, 2, 3, 4]);
+  final aliasedView = Uint8List.sublistView(aliasedData, 1);
+  assert(verify_typed_data_alias(aliasedData.address, aliasedView.address),
+      'Overlapping TypedData views did not preserve pointer aliasing');
+  assert(aliasedData[1] == 77 && aliasedView[0] == 77,
+      'An aliased native write was not copied back to the Dart buffer');
+
+  // A deferred address carries no Wasm allocation and can be materialized
+  // independently by each generated call.
+  final reusableData = Uint8List.fromList([6, 7]);
+  final reusableAddress = reusableData.address;
+  assert(sum_bytes(reusableAddress, reusableData.length) == 13,
+      'A saved deferred address was not readable');
+  write_uint8_for_address_test(reusableAddress);
+  assert(reusableData[0] == 201,
+      'A reused deferred address did not copy native writes back');
+
+  var nonLeafRejected = false;
+  try {
+    uint8_tptr_(Uint8List.fromList([1]).address);
+  } on StateError {
+    nonLeafRejected = true;
+  }
+  assert(nonLeafRejected,
+      'A non-leaf generated function accepted a deferred TypedData address');
 
   // Repeated inputs exceed the fixed Wasm heap if generated wrappers retain
   // every temporary allocation.

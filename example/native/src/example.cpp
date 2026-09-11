@@ -96,6 +96,23 @@ int EMSCRIPTEN_KEEPALIVE sum_bytes(const uint8_t *data, size_t length) {
     return total;
 }
 
+bool EMSCRIPTEN_KEEPALIVE pointer_is_on_stack(const uint8_t *data) {
+    #ifdef __EMSCRIPTEN__
+    uintptr_t address = (uintptr_t)data;
+    uintptr_t base = (uintptr_t)emscripten_stack_get_base();
+    uintptr_t end = (uintptr_t)emscripten_stack_get_end();
+    return address >= end && address < base;
+    #else
+    return false;
+    #endif
+}
+
+bool EMSCRIPTEN_KEEPALIVE verify_typed_data_alias(uint8_t *data, uint8_t *alias) {
+    if (alias != data + 1) return false;
+    data[1] = 77;
+    return alias[0] == 77;
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }
