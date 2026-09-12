@@ -231,7 +231,8 @@ class Func extends Binding {
         userReturnType = ptrType.getDartType(w);
       }
 
-      interopReturnTypeConstructors.add('return result.cast();');
+      interopReturnType = 'int';
+      interopReturnTypeConstructors.add('return Pointer(result).cast();');
     } else if (functionType.returnType is EnumClass &&
         !(functionType.returnType as EnumClass).generateAsInt) {
       interopReturnTypeConstructors.add(
@@ -255,50 +256,61 @@ class Func extends Binding {
     final userArgsString = userArguments
         .map((p) => '${p.type.getDartType(w)} ${p.name},\n')
         .join('');
+    bool isPointer(Type type) => type.typealiasType is PointerType;
     final interopArgsString = interopArguments
-        .map((p) => '${p.type.getInteropDartType(w)} ${p.name},\n')
+        .map((p) =>
+            '${isPointer(p.type) ? 'int' : p.type.getInteropDartType(w)} ${p.name},\n')
         .join('');
-    final invokeInteropArgsString = interopArguments.map((p) {
-      if (p.type.baseType is NativeFunc) {
-        return '${p.name}.cast()';
-      }
+    final pointerArguments = userArguments
+        .where((p) => isPointer(p.type))
+        .map((p) => p.name)
+        .toList();
+    final scopeName = paramNamer.makeUnique('scope');
+    String invokeInteropArgs({required bool scoped}) =>
+        interopArguments.map((p) {
+          if (isPointer(p.type)) {
+            return scoped && pointerArguments.contains(p.name)
+                ? '$scopeName.addressOf(${p.name})'
+                : '${p.name}.addr';
+          }
 
-      if (p.type is PointerType) {
-        if ((p.type.baseType is Struct)) {
-          return '${p.name}.cast()';
-        }
+          if (p.type is EnumClass) {
+            if ((p.type as EnumClass).generateAsInt) {
+              return '${p.name}';
+            } else {
+              return '${p.name}.value';
+            }
+          }
 
-        return p.name;
-      }
+          if (p.type.llvmType == "i64") {
+            return '${p.name}.toJSBigInt';
+          }
 
-      if (p.type is EnumClass) {
-        if ((p.type as EnumClass).generateAsInt) {
           return '${p.name}';
-        } else {
-          return '${p.name}.value';
-        }
-      }
-
-      if (p.type.llvmType == "i64") {
-        return '${p.name}.toJSBigInt';
-      }
-
-      if (p.type is Typealias && p.type.typealiasType is PointerType) {
-        var pointerType = p.type.typealiasType as PointerType;
-        return '${p.name} as ${pointerType.getWasmInteropType(w)}';
-      }
-
-      return '${p.name}';
-    }).join(',');
+        }).join(',');
 
     if (writeModuleBinding) {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
     } else {
+      String invocation({required bool scoped}) => '''
+              final result = GeneratedBindings.instance.$interopFunctionName(${invokeInteropArgs(scoped: scoped)});
+              ${interopReturnTypeConstructors.join("\n")}
+''';
+      final body = pointerArguments.isEmpty
+          ? invocation(scoped: false)
+          : '''
+              if (${pointerArguments.map((name) => '!$name.isDeferred').join(' && ')}) {
+                ${invocation(scoped: false)}
+              }
+              return withNativeCall(<Pointer>[${pointerArguments.join(',')}], ($scopeName) {
+                ${invocation(scoped: true)}
+              });
+''';
+      // Return storage must survive the temporary argument scope's stack restore.
       s.write('''$userReturnType $userFunctionName($userArgsString) {
               ${interopArgumentConstructors.join("\n")}
-              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
-              ${interopReturnTypeConstructors.join("\n")}
+              $body
   }''');
     }
 

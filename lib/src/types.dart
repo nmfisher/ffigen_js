@@ -36,14 +36,41 @@ int sizeOf<T extends NativeType>() {
   throw UnsupportedError('sizeOf not supported for $T');
 }
 
-/// An integer byte address in Wasm memory.
-extension type const Pointer<T extends NativeType>(int addr) implements int {
-  const Pointer.fromAddress(int address) : addr = address;
+final class _TypedDataAddress {
+  final TypedData data;
+  final int byteOffset;
 
-  Pointer<T> operator +(int numElements) =>
-      Pointer<T>(addr + numElements * sizeOf<T>());
+  const _TypedDataAddress(this.data, [this.byteOffset = 0]);
+}
 
-  Pointer<U> cast<U extends NativeType>() => Pointer<U>(addr);
+/// A Wasm byte address or a Dart buffer awaiting a generated JS call.
+///
+/// The representation stays in Dart. Only integer addresses cross into JS.
+extension type const Pointer<T extends NativeType>._(Object _value) {
+  const Pointer(int address) : this._(address);
+  const Pointer.fromAddress(int address) : this._(address);
+  Pointer._fromTypedData(TypedData data) : this._(_TypedDataAddress(data));
+
+  /// Used by generated wrappers to keep raw-pointer calls allocation-free.
+  bool get isDeferred => _value is _TypedDataAddress;
+
+  int get addr {
+    final value = _value;
+    if (value is int) return value;
+    throw StateError(
+        'A TypedData address is materialized by a generated JS call.');
+  }
+
+  Pointer<T> operator +(int numElements) {
+    final offset = numElements * sizeOf<T>();
+    final value = _value;
+    if (value is int) return Pointer<T>(value + offset);
+    final source = value as _TypedDataAddress;
+    return Pointer<T>._(
+        _TypedDataAddress(source.data, source.byteOffset + offset));
+  }
+
+  Pointer<U> cast<U extends NativeType>() => Pointer<U>._(_value);
 
   void free() {
     final address = addr;
@@ -454,47 +481,69 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   }
 
   @JS('stackAlloc')
-  external Pointer<T> _stackAlloc<T extends NativeType>(int numBytes);
+  external int _stackAllocRaw(int numBytes);
+  Pointer<T> _stackAlloc<T extends NativeType>(int numBytes) =>
+      Pointer<T>(_stackAllocRaw(numBytes));
+  Pointer<T> stackAlloc<T extends NativeType>(int numBytes) =>
+      _stackAlloc<T>(numBytes);
 
-  Pointer<T> stackAlloc<T extends NativeType>(int numBytes) {
-    return _stackAlloc<T>(numBytes);
-  }
+  @JS('_malloc')
+  external int _mallocRaw(int numBytes);
+  Pointer<T> _malloc<T extends NativeType>(int numBytes) =>
+      Pointer<T>(_mallocRaw(numBytes));
 
-  external Pointer<T> _malloc<T extends NativeType>(int numBytes);
-
-  external void _free(Pointer ptr);
+  @JS('_free')
+  external void _freeRaw(int address);
+  void _free(Pointer pointer) => _freeRaw(pointer.addr);
 
   @JS('stackSave')
-  external Pointer<Void> stackSave();
+  external int _stackSaveRaw();
+  Pointer<Void> stackSave() => Pointer<Void>(_stackSaveRaw());
 
   @JS('stackRestore')
-  external void stackRestore(Pointer<Void> ptr);
+  external void _stackRestoreRaw(int address);
+  void stackRestore(Pointer<Void> pointer) => _stackRestoreRaw(pointer.addr);
 
   @JS('getValue')
-  external JSBigInt getValueBigInt(Pointer addr, String llvmType);
-  external JSNumber getValue(Pointer addr, String llvmType);
-  external void setValue(Pointer addr, JSNumber value, String llvmType);
+  external JSBigInt _getValueBigIntRaw(int address, String llvmType);
+  JSBigInt getValueBigInt(Pointer pointer, String llvmType) =>
+      _getValueBigIntRaw(pointer.addr, llvmType);
+  @JS('getValue')
+  external JSNumber _getValueRaw(int address, String llvmType);
+  JSNumber getValue(Pointer pointer, String llvmType) =>
+      _getValueRaw(pointer.addr, llvmType);
+  @JS('setValue')
+  external void _setValueRaw(int address, JSNumber value, String llvmType);
+  void setValue(Pointer pointer, JSNumber value, String llvmType) =>
+      _setValueRaw(pointer.addr, value, llvmType);
 
   @JS("lengthBytesUTF8")
   external int _lengthBytesUTF8(String str);
 
   @JS("UTF8ToString")
-  external String _UTF8ToString(Pointer<Char> ptr);
+  external String _utf8ToStringRaw(int address);
+  String _UTF8ToString(Pointer<Char> pointer) => _utf8ToStringRaw(pointer.addr);
 
   @JS("stringToUTF8")
-  external void _stringToUTF8(
-    String str,
-    Pointer<Char> ptr,
-    int maxBytesToWrite,
-  );
+  external void _stringToUtf8Raw(String str, int address, int maxBytesToWrite);
+  void _stringToUTF8(String str, Pointer<Char> pointer, int maxBytesToWrite) =>
+      _stringToUtf8Raw(str, pointer.addr, maxBytesToWrite);
 
-  external void writeArrayToMemory(JSUint8Array data, Pointer ptr);
+  @JS('writeArrayToMemory')
+  external void _writeArrayToMemoryRaw(JSUint8Array data, int address);
+  void writeArrayToMemory(JSUint8Array data, Pointer pointer) =>
+      _writeArrayToMemoryRaw(data, pointer.addr);
 
-  external Pointer<NativeFunction<T>> addFunction<T>(
-    JSFunction f,
-    String signature,
-  );
-  external void removeFunction<T>(Pointer<NativeFunction<T>> f);
+  @JS('addFunction')
+  external int _addFunctionRaw(JSFunction function, String signature);
+  Pointer<NativeFunction<T>> addFunction<T>(
+          JSFunction function, String signature) =>
+      Pointer<NativeFunction<T>>(_addFunctionRaw(function, signature));
+
+  @JS('removeFunction')
+  external void _removeFunctionRaw(int address);
+  void removeFunction<T>(Pointer<NativeFunction<T>> pointer) =>
+      _removeFunctionRaw(pointer.addr);
   external JSUint8Array get HEAPU8;
   external JSUint32Array get HEAPU32;
   external JSFloat32Array get HEAPF32;
@@ -502,7 +551,7 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   // ignore: unused_element, non_constant_identifier_names
   external int _emscripten_stack_get_base();
   // ignore: non_constant_identifier_names, unused_element
-  external Pointer _emscripten_stack_get_current();
+  external int _emscripten_stack_get_current();
   // ignore: non_constant_identifier_names, unused_element
   external int _emscripten_stack_get_free();
 }
@@ -527,77 +576,56 @@ abstract base class Union extends NativeType {
 
 final _heapAllocations = <int>{};
 
-/// Temporary native copies of the buffers registered with [withNativeBuffers].
-///
-/// Addresses remain valid only during that synchronous scope. Buffers already
-/// backed by Wasm memory are borrowed without copying or taking ownership.
-final class NativeBufferScope {
+/// Materializes TypedData arguments for one generated synchronous JS call.
+final class NativeCallScope {
   static const _maximumStackBytes = 32 * 1024;
-
-  final _borrowedAddresses = Map<TypedData, int>.identity();
   late final NativeBufferLayout _layout;
   Pointer<Uint8>? _allocation;
   Pointer<Void>? _stackMarker;
-  bool _closed = false;
 
-  NativeBufferScope._(Iterable<TypedData> buffers) {
+  NativeCallScope(Iterable<Pointer> pointers) {
     try {
-      _prepare(buffers.toList());
+      _layout = NativeBufferLayout([
+        for (final pointer in pointers)
+          if (pointer._value is _TypedDataAddress) pointer._value.data,
+      ]);
+      final bytes = _layout.lengthInBytes;
+      if (bytes == 0) return;
+      if (bytes <= _maximumStackBytes) {
+        _stackMarker = _lib.stackSave();
+        _allocation = stackAlloc<Uint8>(bytes);
+      } else {
+        final pointer = _lib._malloc<Uint8>(bytes);
+        if (pointer.addr == 0) {
+          throw StateError('Could not allocate $bytes bytes.');
+        }
+        _allocation = pointer;
+      }
+      _layout.copyIn(_allocation!.asTypedList(bytes));
     } catch (_) {
       _close(copyBack: false);
       rethrow;
     }
   }
 
-  void _prepare(List<TypedData> buffers) {
-    final copiedBuffers = <TypedData>[];
-    for (final data in buffers) {
-      final existing = _wasmHeapAddress<Uint8>(data);
-      if (existing != null) {
-        _borrowedAddresses[data] = existing.addr;
-      } else {
-        copiedBuffers.add(data);
-      }
-    }
-    _layout = NativeBufferLayout(copiedBuffers);
-    final totalBytes = _layout.lengthInBytes;
-    if (totalBytes == 0) return;
-
-    if (totalBytes <= _maximumStackBytes) {
-      _stackMarker = _lib.stackSave();
-      _allocation = stackAlloc<Uint8>(totalBytes);
-    } else {
-      // The scope owns this allocation directly; it is not a public malloc.
-      final allocation = _lib._malloc<Uint8>(totalBytes);
-      if (allocation.addr == 0) {
-        throw StateError(
-            'Could not allocate $totalBytes bytes for native call.');
-      }
-      _allocation = allocation;
-    }
-    _layout.copyIn(_allocation!.asTypedList(totalBytes));
-  }
-
-  /// Returns an address for a buffer registered when this scope was opened.
-  /// Choose [T] to match the native function's pointer type.
-  Pointer<T> addressOf<T extends NativeType>(TypedData data) {
-    if (_closed) throw StateError('The native buffer scope is closed.');
-    final address = _borrowedAddresses[data] ??
-        _layout.addressOf(data, _allocation?.addr ?? 0);
-    return Pointer<T>(address);
+  /// Resolves a pointer to the integer address passed over the JS boundary.
+  int addressOf(Pointer pointer) {
+    final value = pointer._value;
+    if (value is int) return value;
+    final source = value as _TypedDataAddress;
+    return _layout.addressOf(source.data, _allocation?.addr ?? 0) +
+        source.byteOffset;
   }
 
   void _close({required bool copyBack}) {
-    if (_closed) return;
-    _closed = true;
     try {
       if (copyBack && _allocation != null) {
         _layout.copyBack(_allocation!.asTypedList(_layout.lengthInBytes));
       }
     } finally {
-      final stackMarker = _stackMarker;
-      if (stackMarker != null) {
-        _lib.stackRestore(stackMarker);
+      final marker = _stackMarker;
+      if (marker != null) {
+        _lib.stackRestore(marker);
       } else {
         final allocation = _allocation;
         if (allocation != null) _lib._free(allocation);
@@ -606,26 +634,14 @@ final class NativeBufferScope {
   }
 }
 
-/// Copies [buffers] into one temporary allocation and runs [body] synchronously.
-///
-/// Uses the stack up to 32 KiB including alignment, otherwise the heap. Aliased
-/// buffers retain their relative offsets. Copies writes back on exit (even if
-/// [body] throws), then releases the allocation. Set [copyBack] to false for
-/// input-only or unmodifiable data. This does not change borrowed Wasm views.
-///
-/// Do not return or retain temporary pointers or views, or use an async body.
-/// Stack allocations made inside [body], including generated return structs,
-/// also expire when a stack-backed scope closes. Copy their values out first.
-R withNativeBuffers<R>(
-  Iterable<TypedData> buffers,
-  R Function(NativeBufferScope scope) body, {
-  bool copyBack = true,
-}) {
-  final scope = NativeBufferScope._(buffers);
+/// Used by generated JS wrappers; native FFI calls never use this helper.
+R withNativeCall<R>(
+    Iterable<Pointer> pointers, R Function(NativeCallScope) body) {
+  final scope = NativeCallScope(pointers);
   try {
     return body(scope);
   } finally {
-    scope._close(copyBack: copyBack);
+    scope._close(copyBack: true);
   }
 }
 
@@ -687,10 +703,7 @@ Pointer<T>? _wasmHeapAddress<T extends NativeType>(TypedData data) {
 Pointer<T> _existingTypedDataAddress<T extends NativeType>(TypedData data) {
   final address = _wasmHeapAddress<T>(data);
   if (address != null) return address;
-  throw StateError(
-    'This TypedData is not backed by Wasm memory. '
-    'Use withNativeBuffers([data], (scope) => ... scope.addressOf(data) ...).',
-  );
+  return Pointer<T>._fromTypedData(data);
 }
 
 @JS('Uint8Array')

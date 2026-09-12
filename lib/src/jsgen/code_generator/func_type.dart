@@ -83,19 +83,50 @@ class FunctionType extends Type {
 
   String getExtensionMethod(Writer w, int index) {
     final s = StringBuffer();
-    final originalType = getDartType(w); //getInteropDartType(w);
-    final targetType = originalType.replaceAll(
-        RegExp(r"Function\(Pointer<.*"), "Function(Pointer<T>)");
+    final originalType = getDartType(w);
+    final genericPointer = parameters.length == 1 &&
+        parameters.single.type.typealiasType is PointerType;
+    final targetType = genericPointer
+        ? '${returnType.getDartType(w)} Function(Pointer<T>)'
+        : originalType;
     if (_written.contains(targetType)) {
       return "";
     }
     _written.add(targetType);
 
+    final argumentDeclarations = <String>[];
+    final arguments = <String>[];
+    for (var i = 0; i < parameters.length; i++) {
+      final type = parameters[i].type;
+      final name = 'arg$i';
+      if (type.typealiasType is PointerType) {
+        argumentDeclarations.add('int $name');
+        arguments.add(genericPointer
+            ? 'Pointer<T>($name)'
+            : '${type.getDartType(w)}($name)');
+      } else {
+        argumentDeclarations.add('${type.getInteropDartType(w)} $name');
+        arguments.add(type.llvmType == 'i64' ? '$name.toDart' : name);
+      }
+    }
+    final invocation = 'this(${arguments.join(',')})';
+    final String body;
+    if (returnType.getDartType(w) == 'void') {
+      body = '$invocation;';
+    } else if (returnType.typealiasType is PointerType) {
+      body = 'return $invocation.addr;';
+    } else if (returnType.llvmType == 'i64') {
+      body = 'return $invocation.toJSBigInt;';
+    } else {
+      body = 'return $invocation;';
+    }
+
     s.write(
         '''extension NativeFunctionPointer$index<T extends NativeType> on $targetType {
 
     Pointer<NativeFunction<$originalType>> addFunction() {
-      return NativeLibrary.instance.addFunction<$originalType>(this.toJS, '${wasmSignature}').cast();
+      final callback = (${argumentDeclarations.join(',')}) { $body };
+      return NativeLibrary.instance.addFunction<$originalType>(callback.toJS, '${wasmSignature}').cast();
   }
     }
   

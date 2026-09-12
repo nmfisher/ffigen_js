@@ -130,6 +130,14 @@ void EMSCRIPTEN_KEEPALIVE update_bytes_with_callback(uint8_t *data, void (*callb
     data[0] += 11;
 }
 
+uint8_t *EMSCRIPTEN_KEEPALIVE fill_bytes(uint8_t *data, int value, size_t length) {
+    return (uint8_t *)memset(data, value, length);
+}
+
+int EMSCRIPTEN_KEEPALIVE compare_bytes(const uint8_t *a, const uint8_t *b, size_t length) {
+    return memcmp(a, b, length);
+}
+
 INTTYPE EMSCRIPTEN_KEEPALIVE sum_with_typedef(INTTYPE a, INTTYPE b) {
     return a + b;
 }

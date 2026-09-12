@@ -85,6 +85,8 @@ bool verify_typed_data_alias(uint8_t *data, uint8_t *alias);
 bool verify_typed_data_alignment(uint8_t *scope, uint32_t *words);
 MyStruct return_struct_for_address_test(const uint8_t *scope);
 void update_bytes_with_callback(uint8_t *data, void (*callback)());
+uint8_t *fill_bytes(uint8_t *data, int value, size_t length);
+int compare_bytes(const uint8_t *a, const uint8_t *b, size_t length);
 
 INTTYPE sum_with_typedef(INTTYPE a, INTTYPE b);
 int subtract(int *a, int b);

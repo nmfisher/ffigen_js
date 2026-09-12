@@ -1,23 +1,18 @@
 ## 0.0.16-pre
 
-- Keeps `Pointer<T>` as an integer-backed extension type and generated bindings
-  as direct calls, with no deferred descriptors or automatic call scopes.
-- Adds `withNativeBuffers` for explicit synchronous TypedData copy-in,
-  write-back, and cleanup. Use `scope.addressOf<T>(data)` inside the scope;
-  ordinary Dart lists' `.address` now throws instead of allocating implicitly.
-- Conditionally exports a native implementation returning real `dart:ffi`
-  pointers. Native and web share alias/layout/copying rules and the same scope
-  API; native uses one aligned heap allocation and copies all registered data.
-- Uses one temporary allocation per scope: the Emscripten stack for scopes up to
-  32 KiB (including alignment), otherwise the heap. TypedData views sharing a
-  backing buffer preserve their aliases, alignment, and overlapping writes.
-- Supports input-only and unmodifiable buffers with `copyBack: false`. Scopes
-  preserve aliases and clean up on exceptions; callbacks can open nested scopes.
-- Removes the JavaScript-side `functions.leaf` restriction. Stack allocations
-  made inside an explicit stack-backed scope expire when that scope closes.
-- Keeps addresses of Emscripten-backed lists and explicitly allocated pointers
-  caller-owned across generated calls.
-- Tracks public `malloc` results so `Pointer.free()` releases them.
+- Preserves the portable `nativeFunction(data.address, length)` calling convention.
+  Native targets directly export `dart:ffi`: leaf calls receive the original
+  TypedData storage with no helper, allocation, or copy.
+- Generated JS wrappers materialize ordinary Dart TypedData in one temporary
+  block, copy writes back, and clean up in `finally`. Blocks up to 32 KiB use
+  the Emscripten stack; larger blocks use the heap. Aliases retain their offsets
+  and alignment.
+- Uses Dart-side integer-or-descriptor pointers on web and integer-only JS
+  interop signatures, avoiding JS object boxing. Raw Wasm pointers bypass
+  temporary scopes.
+- Keeps generated return structs outside temporary argument scopes.
+- Keeps Wasm-backed lists and explicit allocations caller-owned. Public
+  `malloc` results are tracked so `Pointer.free()` releases them.
 - Adds `Int8List.address` support.
 
 ## 0.0.15-pre
