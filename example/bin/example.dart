@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:ffigen_js_example/generated_bindings_js.g.dart';
 
+import '../../test/support/native_buffer_contract.dart';
+
 void _expectHeapAddress(TypedData data, int address, String label) {
   assert(
     address == data.offsetInBytes,
@@ -13,6 +15,11 @@ void _expectHeapAddress(TypedData data, int address, String label) {
 void main(List<String> args) async {
   print("Running WASM example");
   GeneratedBindings.initBindings("module");
+
+  for (final entry in nativeBufferContract().entries) {
+    entry.value();
+  }
+  print('Shared native buffer contract passed on Wasm');
 
   assert(returns_bool() == false);
 

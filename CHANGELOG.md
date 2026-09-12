@@ -5,6 +5,9 @@
 - Adds `withNativeBuffers` for explicit synchronous TypedData copy-in,
   write-back, and cleanup. Use `scope.addressOf<T>(data)` inside the scope;
   ordinary Dart lists' `.address` now throws instead of allocating implicitly.
+- Conditionally exports a native implementation returning real `dart:ffi`
+  pointers. Native and web share alias/layout/copying rules and the same scope
+  API; native uses one aligned heap allocation and copies all registered data.
 - Uses one temporary allocation per scope: the Emscripten stack for scopes up to
   32 KiB (including alignment), otherwise the heap. TypedData views sharing a
   backing buffer preserve their aliases, alignment, and overlapping writes.

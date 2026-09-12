@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'native_buffer_layout.dart';
+
 ///
 /// Sub-classes of [NativeType] represent a "native" type, meaning a
 /// type that can be passed to a WASM-compiled native function), and its
@@ -525,19 +527,6 @@ abstract base class Union extends NativeType {
 
 final _heapAllocations = <int>{};
 
-final class _TypedDataRange {
-  final ByteBuffer buffer;
-  int start;
-  int end;
-  int allocationOffset = 0;
-
-  _TypedDataRange(this.buffer, this.start, this.end);
-
-  int get length => end - start;
-
-  Uint8List get source => buffer.asUint8List(start, length);
-}
-
 /// Temporary native copies of the buffers registered with [withNativeBuffers].
 ///
 /// Addresses remain valid only during that synchronous scope. Buffers already
@@ -545,8 +534,8 @@ final class _TypedDataRange {
 final class NativeBufferScope {
   static const _maximumStackBytes = 32 * 1024;
 
-  final _ranges = <_TypedDataRange>[];
-  final _addresses = Map<TypedData, int>.identity();
+  final _borrowedAddresses = Map<TypedData, int>.identity();
+  late final NativeBufferLayout _layout;
   Pointer<Uint8>? _allocation;
   Pointer<Void>? _stackMarker;
   bool _closed = false;
@@ -561,40 +550,18 @@ final class NativeBufferScope {
   }
 
   void _prepare(List<TypedData> buffers) {
+    final copiedBuffers = <TypedData>[];
     for (final data in buffers) {
       final existing = _wasmHeapAddress<Uint8>(data);
       if (existing != null) {
-        _addresses[data] = existing.addr;
-        continue;
-      }
-      final start = data.offsetInBytes;
-      final end = start + data.lengthInBytes;
-      _TypedDataRange? range;
-      for (final candidate in _ranges) {
-        if (candidate.buffer == data.buffer) {
-          range = candidate;
-          break;
-        }
-      }
-      if (range == null) {
-        range = _TypedDataRange(data.buffer, start, end);
-        _ranges.add(range);
+        _borrowedAddresses[data] = existing.addr;
       } else {
-        if (start < range.start) range.start = start;
-        if (end > range.end) range.end = end;
+        copiedBuffers.add(data);
       }
     }
-
-    if (_ranges.isEmpty) return;
-
-    var totalBytes = 0;
-    for (final range in _ranges) {
-      // Preserve the original alignment of every view, including mixed-type
-      // aliases, and align each range within the single temporary allocation.
-      range.start &= ~15;
-      range.allocationOffset = totalBytes;
-      totalBytes += (range.length + 15) & ~15;
-    }
+    _layout = NativeBufferLayout(copiedBuffers);
+    final totalBytes = _layout.lengthInBytes;
+    if (totalBytes == 0) return;
 
     if (totalBytes <= _maximumStackBytes) {
       _stackMarker = _lib.stackSave();
@@ -608,29 +575,15 @@ final class NativeBufferScope {
       }
       _allocation = allocation;
     }
-    for (final range in _ranges) {
-      (_allocation! + range.allocationOffset)
-          .asTypedList(range.length)
-          .setAll(0, range.source);
-    }
-    for (final data in buffers) {
-      if (_addresses.containsKey(data)) continue;
-      final range = _ranges.firstWhere((r) => r.buffer == data.buffer);
-      _addresses[data] = _allocation!.addr +
-          range.allocationOffset +
-          data.offsetInBytes -
-          range.start;
-    }
+    _layout.copyIn(_allocation!.asTypedList(totalBytes));
   }
 
   /// Returns an address for a buffer registered when this scope was opened.
   /// Choose [T] to match the native function's pointer type.
   Pointer<T> addressOf<T extends NativeType>(TypedData data) {
     if (_closed) throw StateError('The native buffer scope is closed.');
-    final address = _addresses[data];
-    if (address == null) {
-      throw ArgumentError('The buffer was not registered with this scope.');
-    }
+    final address = _borrowedAddresses[data] ??
+        _layout.addressOf(data, _allocation?.addr ?? 0);
     return Pointer<T>(address);
   }
 
@@ -638,13 +591,8 @@ final class NativeBufferScope {
     if (_closed) return;
     _closed = true;
     try {
-      if (copyBack) {
-        for (final range in _ranges) {
-          range.source.setAll(
-            0,
-            (_allocation! + range.allocationOffset).asTypedList(range.length),
-          );
-        }
+      if (copyBack && _allocation != null) {
+        _layout.copyBack(_allocation!.asTypedList(_layout.lengthInBytes));
       }
     } finally {
       final stackMarker = _stackMarker;

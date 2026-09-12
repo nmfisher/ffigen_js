@@ -87,11 +87,17 @@ extension StructAllocator<T extends NativeType> on Struct {
 
 ### TypedData pointers
 
-`Pointer<T>` is an integer byte address. Generated bindings pass pointers
-directly to JavaScript, without allocating a scope or boxing a Dart descriptor.
-For ordinary Dart typed lists, use an explicit synchronous buffer scope:
+Import `package:ffigen_js/ffigen_js.dart` on both native and web. Its conditional
+export provides `dart:ffi` types on native and integer-backed pointer types on
+web. Generated JavaScript bindings pass pointers directly without allocating a
+scope or boxing a Dart descriptor. The same explicit buffer scope works with
+standard native `ffigen` bindings and JavaScript bindings:
 
 ```dart
+import 'dart:typed_data';
+import 'package:ffigen_js/ffigen_js.dart';
+import 'generated_bindings.dart'; // Your conditional native/JS bindings export.
+
 final data = Uint8List.fromList([1, 2, 3]);
 final result = withNativeBuffers([data], (scope) {
   final pointer = scope.addressOf<Uint8>(data);
@@ -101,10 +107,11 @@ final result = withNativeBuffers([data], (scope) {
 ```
 
 Register all buffers up front, including any aliased views. The scope copies
-them into one allocation: the Emscripten stack when the combined aligned size
-is at most 32 KiB, otherwise the heap. Aliases retain their relative offsets and
-alignment. Choose the native type in `addressOf<T>` to match the function's
-parameter. An empty buffer has address zero.
+them into one aligned allocation. Web uses the Emscripten stack up to 32 KiB
+(including alignment), otherwise the heap; native always uses the native heap.
+Aliases retain their relative offsets and alignment on both targets. Choose
+the native type in `addressOf<T>` to match the function's parameter. On native
+this returns a real `dart:ffi.Pointer<T>`. An empty buffer has address zero.
 
 Writes are copied back when the scope exits, even if its body throws, and the
 temporary allocation is released in `finally`. Use `copyBack: false` for
@@ -119,19 +126,28 @@ or be retained by native code. Closing a stack-backed scope also releases stack
 allocations made inside it, including structs returned by generated functions.
 Copy their field values into Dart objects before leaving the scope.
 
-Ordinary Dart lists' `.address` throws with guidance to use `withNativeBuffers`.
+On web, ordinary Dart lists' `.address` throws with guidance to use `withNativeBuffers`.
 Wasm-backed lists' `.address` returns their existing integer address. Registering
 a Wasm-backed list in a scope borrows it without allocation, copying, or freeing;
 `copyBack: false` does not prevent native writes to such a view.
 
-This explicit helper is a web API; shared calling code needs an equivalent
-native allocation helper. `functions.leaf` only affects native FFI generation
-and is not required by the JavaScript bindings.
+On native, the scope copies all registered TypedData, including lists created
+with `Pointer.asTypedList`; it does not detect existing native storage or take
+ownership of it. Already-owned native pointers can be passed directly to FFI
+functions without a buffer scope. The portable API is `withNativeBuffers`,
+`NativeBufferScope.addressOf<T>`, and the standard FFI pointer/type names;
+web-specific allocation helpers below are not exported on native.
 
-Allocate retained memory explicitly with `malloc`, copy the data into an
-`asTypedList` view, and free the pointer when the native borrow ends.
+Buffer scopes do not require leaf functions on either target. `functions.leaf`
+remains a native FFI calling-convention option and does not affect JavaScript
+generation.
 
-For native output, use a typed-list view over Emscripten memory. The
+Allocate retained memory explicitly, copy the data into an `asTypedList` view,
+and free it when the native borrow ends. On web use this package's byte-count
+`malloc<T>(numBytes)` and `Pointer.free()`; on native use an allocator such as
+`package:ffi`'s `malloc` and its `free` method.
+
+For native output on web, use a typed-list view over Emscripten memory. The
 `makeUint8List`, `makeInt16List`, `makeUint16List`, `makeInt32List`,
 `makeInt64List`, `makeUint32List`, `makeFloat32List`, and `makeFloat64List`
 helpers create such views using Emscripten stack allocation. Their `.address`
