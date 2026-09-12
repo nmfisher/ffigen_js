@@ -15,6 +15,10 @@
 - Keeps Wasm-backed lists and explicit allocations caller-owned. Public
   `malloc` results are tracked so `Pointer.free()` releases them.
 - Adds `Int8List.address` support.
+- Adds a Wasm test suite (`tool/wasm/run.sh`) that runs the shared
+  TypedData address contract against the Emscripten heap, including
+  offset-base cases: views with non-zero offsets, mixed-type aliasing,
+  large odd-offset views, and heap-backed subviews.
 
 ## 0.0.15-pre
 
