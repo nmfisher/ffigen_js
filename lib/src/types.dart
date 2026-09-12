@@ -829,7 +829,7 @@ extension AsFloat32List on Pointer<Float> {
   Float32List asTypedList(int length) {
     final start = addr;
     final wrapper = Float32ArrayWrapper(
-      NativeLibrary.instance.HEAPF32.buffer,
+      NativeLibrary.instance.HEAPU8.buffer,
       start,
       length,
     ) as JSFloat32Array;

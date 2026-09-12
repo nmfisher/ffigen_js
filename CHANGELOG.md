@@ -19,6 +19,15 @@
   TypedData address contract against the Emscripten heap, including
   offset-base cases: views with non-zero offsets, mixed-type aliasing,
   large odd-offset views, and heap-backed subviews.
+- Adds a shared generated-API contract that compiles the same call-site code
+  against the ffigen dart:ffi bindings (`cd example && dart test`, built via
+  native assets) and the jsgen JS bindings (Wasm), checking outputs on both
+  platforms: integer calls, typed lists of every width, view aliasing and
+  alignment, pointer returns, and enums.
+- Fixes `Pointer<Float>.asTypedList` on web to view the Emscripten heap
+  through `HEAPU8` instead of requiring a `HEAPF32` runtime export.
+- Removes `return_struct_for_address_test` from the example's leaf include
+  list: dart:ffi leaf calls cannot return structs by value.
 
 ## 0.0.15-pre
 

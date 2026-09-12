@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:ffigen_js_example/generated_bindings_js.g.dart';
 
+import '../../test/support/generated_api_contract.dart';
 import '../../test/support/typed_data_address_contract.dart';
 
 void _expectHeapAddress(TypedData data, int address, String label) {
@@ -20,6 +21,11 @@ void main(List<String> args) async {
     entry.value();
   }
   print('Shared TypedData.address call sites passed on Wasm');
+
+  for (final entry in generatedApiContract().entries) {
+    entry.value();
+  }
+  print('Shared generated-API call sites passed on Wasm');
 
   assert(returns_bool() == false);
 

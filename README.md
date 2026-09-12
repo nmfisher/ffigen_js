@@ -194,6 +194,14 @@ This will:
 5) run the Wasm TypedData.address test suite
    ([tool/wasm/](./tool/wasm/typed_data_address_wasm_test.dart)), which covers
    the shared [TypedData address contract](./test/support/typed_data_address_contract.dart)
-   on web plus offset-base cases: views with non-zero offsets, mixed-type
+   and [generated-API contract](./test/support/generated_api_contract.dart) on
+   web plus offset-base cases: views with non-zero offsets, mixed-type
    aliasing, and Emscripten heap-backed lists. Run it standalone with
    `./tool/wasm/run.sh` (requires a prior `example/build.sh`).
+
+The example package also runs the same contracts natively against the
+ffigen-generated dart:ffi bindings (built through native assets):
+
+```sh
+cd example && dart test
+```
