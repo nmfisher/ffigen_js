@@ -454,69 +454,48 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   }
 
   @JS('stackAlloc')
-  external int _stackAllocRaw(int numBytes);
-  Pointer<T> _stackAlloc<T extends NativeType>(int numBytes) =>
-      Pointer<T>(_stackAllocRaw(numBytes));
-  Pointer<T> stackAlloc<T extends NativeType>(int numBytes) =>
-      _stackAlloc<T>(numBytes);
+  external Pointer<T> _stackAlloc<T extends NativeType>(int numBytes);
+  @JS('stackAlloc')
+  external Pointer<T> stackAlloc<T extends NativeType>(int numBytes);
 
   @JS('_malloc')
-  external int _mallocRaw(int numBytes);
-  Pointer<T> _malloc<T extends NativeType>(int numBytes) =>
-      Pointer<T>(_mallocRaw(numBytes));
+  external Pointer<T> _malloc<T extends NativeType>(int numBytes);
 
   @JS('_free')
-  external void _freeRaw(int address);
-  void _free(Pointer pointer) => _freeRaw(pointer.addr);
+  external void _free(Pointer pointer);
 
   @JS('stackSave')
-  external int _stackSaveRaw();
-  Pointer<Void> stackSave() => Pointer<Void>(_stackSaveRaw());
+  external Pointer<Void> stackSave();
 
   @JS('stackRestore')
-  external void _stackRestoreRaw(int address);
-  void stackRestore(Pointer<Void> pointer) => _stackRestoreRaw(pointer.addr);
+  external void stackRestore(Pointer<Void> pointer);
 
   @JS('getValue')
-  external JSBigInt _getValueBigIntRaw(int address, String llvmType);
-  JSBigInt getValueBigInt(Pointer pointer, String llvmType) =>
-      _getValueBigIntRaw(pointer.addr, llvmType);
+  external JSBigInt getValueBigInt(Pointer pointer, String llvmType);
   @JS('getValue')
-  external JSNumber _getValueRaw(int address, String llvmType);
-  JSNumber getValue(Pointer pointer, String llvmType) =>
-      _getValueRaw(pointer.addr, llvmType);
+  external JSNumber getValue(Pointer pointer, String llvmType);
   @JS('setValue')
-  external void _setValueRaw(int address, JSNumber value, String llvmType);
-  void setValue(Pointer pointer, JSNumber value, String llvmType) =>
-      _setValueRaw(pointer.addr, value, llvmType);
+  external void setValue(Pointer pointer, JSNumber value, String llvmType);
 
   @JS("lengthBytesUTF8")
   external int _lengthBytesUTF8(String str);
 
   @JS("UTF8ToString")
-  external String _utf8ToStringRaw(int address);
-  String _UTF8ToString(Pointer<Char> pointer) => _utf8ToStringRaw(pointer.addr);
+  external String _UTF8ToString(Pointer<Char> pointer);
 
   @JS("stringToUTF8")
-  external void _stringToUtf8Raw(String str, int address, int maxBytesToWrite);
-  void _stringToUTF8(String str, Pointer<Char> pointer, int maxBytesToWrite) =>
-      _stringToUtf8Raw(str, pointer.addr, maxBytesToWrite);
+  external void _stringToUTF8(
+      String str, Pointer<Char> pointer, int maxBytesToWrite);
 
   @JS('writeArrayToMemory')
-  external void _writeArrayToMemoryRaw(JSUint8Array data, int address);
-  void writeArrayToMemory(JSUint8Array data, Pointer pointer) =>
-      _writeArrayToMemoryRaw(data, pointer.addr);
+  external void writeArrayToMemory(JSUint8Array data, Pointer pointer);
 
   @JS('addFunction')
-  external int _addFunctionRaw(JSFunction function, String signature);
-  Pointer<NativeFunction<T>> addFunction<T>(
-          JSFunction function, String signature) =>
-      Pointer<NativeFunction<T>>(_addFunctionRaw(function, signature));
+  external Pointer<NativeFunction<T>> addFunction<T>(
+      JSFunction function, String signature);
 
   @JS('removeFunction')
-  external void _removeFunctionRaw(int address);
-  void removeFunction<T>(Pointer<NativeFunction<T>> pointer) =>
-      _removeFunctionRaw(pointer.addr);
+  external void removeFunction<T>(Pointer<NativeFunction<T>> pointer);
   external JSUint8Array get HEAPU8;
   external JSUint32Array get HEAPU32;
   external JSFloat32Array get HEAPF32;
@@ -524,7 +503,7 @@ extension type NativeLibrary(JSObject _) implements JSObject {
   // ignore: unused_element, non_constant_identifier_names
   external int _emscripten_stack_get_base();
   // ignore: non_constant_identifier_names, unused_element
-  external int _emscripten_stack_get_current();
+  external Pointer _emscripten_stack_get_current();
   // ignore: non_constant_identifier_names, unused_element
   external int _emscripten_stack_get_free();
 }
