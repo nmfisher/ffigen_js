@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-/// Layout and copying rules for temporary buffers in generated JS calls.
+/// Layout and copying rules for explicit temporary Wasm buffer scopes.
 /// Internal to the package; addresses are relative to an aligned allocation.
 final class NativeBufferLayout {
   static const alignment = 16;
@@ -47,12 +47,22 @@ final class NativeBufferLayout {
     }
   }
 
-  int addressOf(TypedData data, int baseAddress) {
+  bool containsBuffer(ByteBuffer buffer) =>
+      _ranges.any((range) => range.buffer == buffer);
+
+  int? addressOf(TypedData data, int baseAddress) {
+    if (data.lengthInBytes == 0) return 0;
     final offset = _offsets[data];
-    if (offset == null) {
-      throw ArgumentError('The buffer was not registered with this scope.');
+    if (offset != null) return baseAddress + offset;
+    // Views created inside a scope may borrow a registered enclosing range.
+    for (final range in _ranges) {
+      if (range.buffer == data.buffer &&
+          data.offsetInBytes >= range.start &&
+          data.offsetInBytes + data.lengthInBytes <= range.end) {
+        return baseAddress + range.offset + data.offsetInBytes - range.start;
+      }
     }
-    return data.lengthInBytes == 0 ? 0 : baseAddress + offset;
+    return null;
   }
 
   void copyIn(Uint8List allocation) {

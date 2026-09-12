@@ -87,7 +87,7 @@ extension StructAllocator<T extends NativeType> on Struct {
 
 ### TypedData pointers
 
-Use the same call site on native and web:
+Use an explicit buffer scope with the same call site on native and web:
 
 ```dart
 import 'dart:typed_data';
@@ -95,12 +95,15 @@ import 'package:ffigen_js/ffigen_js.dart';
 import 'generated_bindings.dart'; // Your conditional native/JS bindings export.
 
 final data = Uint8List.fromList([1, 2, 3]);
-nativeFunction(data.address, data.length);
+withNativeBuffers([data], () {
+  nativeFunction(data.address, data.length);
+});
 ```
 
-On native, the package exports `dart:ffi` directly. `data.address` is Dart's
-built-in TypedData address and the generated `@Native(isLeaf: true)` function
-receives the original storage. There is no buffer helper, allocation, or copy.
+On native, the package re-exports `dart:ffi`, and `withNativeBuffers` simply
+executes its callback. It does not enumerate the buffers, allocate native memory,
+or copy anything. `data.address` is Dart's built-in TypedData address and the
+generated `@Native(isLeaf: true)` function receives the original storage.
 Configure those functions as leaf in your native `ffigen` configuration:
 
 ```yaml
@@ -110,26 +113,43 @@ functions:
       - nativeFunction
 ```
 
-On web, ordinary Dart lists' `.address` returns a Dart descriptor. The generated
-JS wrapper collects the pointer arguments, allocates one temporary block,
-copies input bytes, invokes the native function, copies writes back, and releases
-the block in `finally`. It uses the Emscripten stack up to 32 KiB including
-alignment, otherwise the heap. Views sharing a backing buffer preserve their
-relative offsets, alignment, and overlapping writes.
+On web, `withNativeBuffers` copies the registered ordinary Dart buffers into one
+temporary block before executing the callback. Inside the scope, `.address`
+returns a real integer-backed `Pointer<T>`. The scope copies writes back and
+releases the block in `finally`, including when the callback throws. It uses the
+Emscripten stack up to 32 KiB including alignment, otherwise the heap. Views
+sharing a backing buffer preserve relative offsets, alignment, and overlapping
+writes. Register all ordinary buffers used by the callback; unregistered
+`.address` access throws instead of allocating implicitly.
 
-Web `Pointer<T>` uses a Dart-side representation containing either an integer
-address or a buffer descriptor. It does not box descriptors into JS objects.
-Generated interop signatures use integers, and raw-pointer calls bypass scope
-creation. Addresses of Wasm-backed lists are passed directly without copying
-or taking ownership. Generated return structs are allocated before the
-temporary scope so its stack restoration does not invalidate them.
+`Pointer<T>` remains an extension type on `int`, with no descriptors or fake
+address handles. Generated functions retain their `Pointer<T>` parameters and
+perform direct calls without automatic buffer scopes. Addresses of Wasm-backed
+lists work without a scope; registering these lists neither copies them nor
+takes ownership.
+
+Views created within a registered range can use `.address` too. Nested scopes
+reuse an outer scope's storage for such views; their writes copy back when the
+owning outer scope exits. A nested registration that would extend an active
+buffer's copied range is rejected: register the enclosing range in the outer
+scope instead.
 
 For portable code, use `.address` directly as the entire argument of a native
-leaf function; do not save the address or retain it in native code. Calls must
-complete synchronously. Native leaf functions cannot invoke Dart callbacks.
-JS bindings do not enforce the leaf flag, but JS-only callbacks observe writes
-to an ordinary Dart list only after the outer call copies back. Use explicit
-Wasm-backed storage for live sharing during callbacks.
+leaf function; do not save the address or retain it in native code. Scope
+callbacks must complete synchronously: do not use `async` or return a `Future`.
+Native writes are immediately visible, while web writes to copied buffers reach
+the original Dart lists only at scope exit. Do not edit those Dart lists during
+the scope, as copy-back will overwrite those edits.
+
+Native leaf functions cannot invoke Dart callbacks. JS bindings do not enforce
+the leaf flag, but JS-only callbacks observe copied-buffer writes through the
+scoped pointers, not the original Dart lists. Use Wasm-backed storage for live
+sharing with Dart list access during callbacks.
+
+Temporary pointers must not escape their scope. In a stack-backed scope,
+additional stack allocations made by the callback also expire when it exits,
+including stack-backed generated return structs. Read or copy their values
+inside the scope.
 
 Allocate retained memory explicitly, copy the data into an `asTypedList` view,
 and free it when the native borrow ends. On web use this package's byte-count

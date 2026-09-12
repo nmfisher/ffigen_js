@@ -36,41 +36,14 @@ int sizeOf<T extends NativeType>() {
   throw UnsupportedError('sizeOf not supported for $T');
 }
 
-final class _TypedDataAddress {
-  final TypedData data;
-  final int byteOffset;
+/// An integer byte address in Wasm memory.
+extension type const Pointer<T extends NativeType>(int addr) implements int {
+  const Pointer.fromAddress(int address) : addr = address;
 
-  const _TypedDataAddress(this.data, [this.byteOffset = 0]);
-}
+  Pointer<T> operator +(int numElements) =>
+      Pointer<T>(addr + numElements * sizeOf<T>());
 
-/// A Wasm byte address or a Dart buffer awaiting a generated JS call.
-///
-/// The representation stays in Dart. Only integer addresses cross into JS.
-extension type const Pointer<T extends NativeType>._(Object _value) {
-  const Pointer(int address) : this._(address);
-  const Pointer.fromAddress(int address) : this._(address);
-  Pointer._fromTypedData(TypedData data) : this._(_TypedDataAddress(data));
-
-  /// Used by generated wrappers to keep raw-pointer calls allocation-free.
-  bool get isDeferred => _value is _TypedDataAddress;
-
-  int get addr {
-    final value = _value;
-    if (value is int) return value;
-    throw StateError(
-        'A TypedData address is materialized by a generated JS call.');
-  }
-
-  Pointer<T> operator +(int numElements) {
-    final offset = numElements * sizeOf<T>();
-    final value = _value;
-    if (value is int) return Pointer<T>(value + offset);
-    final source = value as _TypedDataAddress;
-    return Pointer<T>._(
-        _TypedDataAddress(source.data, source.byteOffset + offset));
-  }
-
-  Pointer<U> cast<U extends NativeType>() => Pointer<U>._(_value);
+  Pointer<U> cast<U extends NativeType>() => Pointer<U>(addr);
 
   void free() {
     final address = addr;
@@ -576,19 +549,30 @@ abstract base class Union extends NativeType {
 
 final _heapAllocations = <int>{};
 
-/// Materializes TypedData arguments for one generated synchronous JS call.
-final class NativeCallScope {
+_NativeBufferScope? _activeBufferScope;
+
+/// Owns temporary storage for an explicit synchronous buffer scope.
+final class _NativeBufferScope {
   static const _maximumStackBytes = 32 * 1024;
   late final NativeBufferLayout _layout;
   Pointer<Uint8>? _allocation;
   Pointer<Void>? _stackMarker;
+  final _NativeBufferScope? parent;
 
-  NativeCallScope(Iterable<Pointer> pointers) {
+  _NativeBufferScope(Iterable<TypedData> buffers, this.parent) {
     try {
-      _layout = NativeBufferLayout([
-        for (final pointer in pointers)
-          if (pointer._value is _TypedDataAddress) pointer._value.data,
-      ]);
+      final pending = <TypedData>[];
+      for (final data in buffers) {
+        if (_wasmHeapAddress<Uint8>(data) != null) continue;
+        if (parent?.addressOf(data) != null) continue;
+        // Do not create a second, stale copy of an active backing buffer.
+        if (parent?.containsBuffer(data.buffer) ?? false) {
+          throw ArgumentError(
+              'Register the enclosing buffer in the outer withNativeBuffers scope.');
+        }
+        pending.add(data);
+      }
+      _layout = NativeBufferLayout(pending);
       final bytes = _layout.lengthInBytes;
       if (bytes == 0) return;
       if (bytes <= _maximumStackBytes) {
@@ -608,14 +592,13 @@ final class NativeCallScope {
     }
   }
 
-  /// Resolves a pointer to the integer address passed over the JS boundary.
-  int addressOf(Pointer pointer) {
-    final value = pointer._value;
-    if (value is int) return value;
-    final source = value as _TypedDataAddress;
-    return _layout.addressOf(source.data, _allocation?.addr ?? 0) +
-        source.byteOffset;
-  }
+  int? addressOf(TypedData data) =>
+      _layout.addressOf(data, _allocation?.addr ?? 0) ??
+      parent?.addressOf(data);
+
+  bool containsBuffer(ByteBuffer buffer) =>
+      _layout.containsBuffer(buffer) ||
+      (parent?.containsBuffer(buffer) ?? false);
 
   void _close({required bool copyBack}) {
     try {
@@ -634,13 +617,21 @@ final class NativeCallScope {
   }
 }
 
-/// Used by generated JS wrappers; native FFI calls never use this helper.
-R withNativeCall<R>(
-    Iterable<Pointer> pointers, R Function(NativeCallScope) body) {
-  final scope = NativeCallScope(pointers);
+/// Makes [buffers] available through `.address` during the synchronous [body].
+///
+/// On web, copies ordinary Dart buffers into temporary Wasm memory and copies
+/// writes back on exit, including when [body] throws. Nested scopes reuse
+/// already registered storage. Wasm-backed buffers are borrowed without copying.
+/// Native targets simply execute [body], preserving direct leaf FFI calls.
+/// Do not return a Future or retain temporary pointers beyond this scope.
+R withNativeBuffers<R>(Iterable<TypedData> buffers, R Function() body) {
+  final parent = _activeBufferScope;
+  final scope = _NativeBufferScope(buffers, parent);
+  _activeBufferScope = scope;
   try {
-    return body(scope);
+    return body();
   } finally {
+    _activeBufferScope = parent;
     scope._close(copyBack: true);
   }
 }
@@ -703,7 +694,10 @@ Pointer<T>? _wasmHeapAddress<T extends NativeType>(TypedData data) {
 Pointer<T> _existingTypedDataAddress<T extends NativeType>(TypedData data) {
   final address = _wasmHeapAddress<T>(data);
   if (address != null) return address;
-  return Pointer<T>._fromTypedData(data);
+  final scopedAddress = _activeBufferScope?.addressOf(data);
+  if (scopedAddress != null) return Pointer<T>(scopedAddress);
+  throw StateError(
+      'Register this buffer with withNativeBuffers before using .address.');
 }
 
 @JS('Uint8Array')

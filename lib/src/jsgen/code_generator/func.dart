@@ -261,56 +261,34 @@ class Func extends Binding {
         .map((p) =>
             '${isPointer(p.type) ? 'int' : p.type.getInteropDartType(w)} ${p.name},\n')
         .join('');
-    final pointerArguments = userArguments
-        .where((p) => isPointer(p.type))
-        .map((p) => p.name)
-        .toList();
-    final scopeName = paramNamer.makeUnique('scope');
-    String invokeInteropArgs({required bool scoped}) =>
-        interopArguments.map((p) {
-          if (isPointer(p.type)) {
-            return scoped && pointerArguments.contains(p.name)
-                ? '$scopeName.addressOf(${p.name})'
-                : '${p.name}.addr';
-          }
+    final invokeInteropArgs = interopArguments.map((p) {
+      if (isPointer(p.type)) {
+        return '${p.name}.addr';
+      }
 
-          if (p.type is EnumClass) {
-            if ((p.type as EnumClass).generateAsInt) {
-              return '${p.name}';
-            } else {
-              return '${p.name}.value';
-            }
-          }
-
-          if (p.type.llvmType == "i64") {
-            return '${p.name}.toJSBigInt';
-          }
-
+      if (p.type is EnumClass) {
+        if ((p.type as EnumClass).generateAsInt) {
           return '${p.name}';
-        }).join(',');
+        } else {
+          return '${p.name}.value';
+        }
+      }
+
+      if (p.type.llvmType == "i64") {
+        return '${p.name}.toJSBigInt';
+      }
+
+      return '${p.name}';
+    }).join(',');
 
     if (writeModuleBinding) {
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
     } else {
-      String invocation({required bool scoped}) => '''
-              final result = GeneratedBindings.instance.$interopFunctionName(${invokeInteropArgs(scoped: scoped)});
-              ${interopReturnTypeConstructors.join("\n")}
-''';
-      final body = pointerArguments.isEmpty
-          ? invocation(scoped: false)
-          : '''
-              if (${pointerArguments.map((name) => '!$name.isDeferred').join(' && ')}) {
-                ${invocation(scoped: false)}
-              }
-              return withNativeCall(<Pointer>[${pointerArguments.join(',')}], ($scopeName) {
-                ${invocation(scoped: true)}
-              });
-''';
-      // Return storage must survive the temporary argument scope's stack restore.
       s.write('''$userReturnType $userFunctionName($userArgsString) {
               ${interopArgumentConstructors.join("\n")}
-              $body
+              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgs);
+              ${interopReturnTypeConstructors.join("\n")}
   }''');
     }
 

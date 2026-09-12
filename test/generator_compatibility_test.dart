@@ -34,8 +34,7 @@ void main() {
     );
   });
 
-  test('JS wrappers materialize pointers and expose integer interop arguments',
-      () {
+  test('JS wrappers accept Pointer arguments and invoke interop directly', () {
     final uint8 = NativeType(SupportedNativeType.uint8);
     final int32 = NativeType(SupportedNativeType.int32);
     final function = Func(
@@ -60,21 +59,15 @@ void main() {
     final output = writer.generate();
 
     expect(output, contains('external int _readBytes(int data,'));
-    expect(output, contains('if (!data.isDeferred && !other.isDeferred)'));
+    expect(output, contains('int readBytes(Pointer<Uint8> data,'));
+    expect(output, isNot(contains('isDeferred')));
     expect(output, contains('_readBytes(data.addr,other.addr,length)'));
-    expect(output, contains('withNativeCall(<Pointer>[data,other], (scope)'));
-    expect(
-      output,
-      contains(
-        'GeneratedBindings.instance._readBytes('
-        'scope.addressOf(data),scope.addressOf(other),length)',
-      ),
-    );
+    expect(output, isNot(contains('withNativeCall')));
+    expect(output, isNot(contains('withNativeBuffers')));
     expect(output, isNot(contains('releaseTemporaryTypedDataAddress')));
   });
 
-  test('void JS wrappers scope TypedData arguments without leaf configuration',
-      () {
+  test('void JS wrappers remain direct calls without leaf configuration', () {
     final uint8 = NativeType(SupportedNativeType.uint8);
     final function = Func(
       name: 'readBytes',
@@ -96,11 +89,11 @@ void main() {
     expect(
         output,
         contains('GeneratedBindings.instance._readBytes('
-            'scope.addressOf(data))'));
-    expect(output, contains('withNativeCall'));
+            'data.addr)'));
+    expect(output, isNot(contains('withNativeCall')));
   });
 
-  test('scope parameter does not shadow the internal call scope', () {
+  test('scope parameter passes through unchanged', () {
     final function = Func(
       name: 'readBytes',
       returnType: NativeType(SupportedNativeType.int32),
@@ -121,7 +114,7 @@ void main() {
       nativeEntryPoints: [],
     ).generate();
 
-    expect(output, contains('_readBytes(scope1.addressOf(scope))'));
+    expect(output, contains('_readBytes(scope.addr)'));
   });
 
   test('returned structs retain caller-managed stack ownership', () {
@@ -151,7 +144,7 @@ void main() {
     final allocation = output.indexOf('final Result_out = Result.stackAlloc()');
     expect(allocation, greaterThanOrEqualTo(0));
     expect(allocation, lessThan(output.indexOf('final result =')));
-    expect(allocation, lessThan(output.indexOf('return withNativeCall(')));
+    expect(output, isNot(contains('withNativeCall')));
     expect(output, contains('return Result_out.toDart()'));
   });
 
@@ -174,7 +167,8 @@ void main() {
       nativeEntryPoints: [],
     ).generate();
     expect(output, contains('external int _identity(int data,'));
-    expect(output, contains('scope.addressOf(data)'));
+    expect(output, contains('DartBytes identity(DartBytes data,'));
+    expect(output, contains('_identity(data.addr)'));
     expect(output, contains('return Pointer(result).cast()'));
   });
 
