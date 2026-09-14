@@ -8,3 +8,4 @@ pubspec.lock
 
 example/build
 example/lib/*.g.dart
+.tina/

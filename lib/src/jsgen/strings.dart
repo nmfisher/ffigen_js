@@ -56,6 +56,12 @@ const includeDirectives = 'include-directives';
 
 const compilerOpts = 'compiler-opts';
 
+// Clang target triple used by default so parsed types (size_t, long, pointer
+// widths, ...) follow the wasm32 ABI instead of the host ABI. See
+// [withDefaultWasmTarget] in config_types.dart.
+const targetFlag = '-target';
+const defaultWasmTarget = 'wasm32-unknown-emscripten';
+
 const macos = 'macos';
 const ios = 'ios';
 

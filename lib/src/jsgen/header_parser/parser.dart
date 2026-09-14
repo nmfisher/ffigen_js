@@ -72,7 +72,10 @@ List<Binding> parseToBindings(Config c) {
     ],
 
     // Add the user options last so they can override any other options.
-    ...config.compilerOpts
+    // The default wasm32 target is prepended first unless the user already
+    // specified a target, so types like size_t follow the Wasm ABI rather
+    // than the host ABI.
+    ...withDefaultWasmTarget(config.compilerOpts)
   ];
 
   _logger.fine('CompilerOpts used: $compilerOpts');

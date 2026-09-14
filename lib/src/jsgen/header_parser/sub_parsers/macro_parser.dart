@@ -61,7 +61,7 @@ List<Constant> parseSavedMacros() {
   Pointer<Pointer<Utf8>> clangCmdArgs = nullptr;
   var cmdLen = 0;
 
-  final compilerOpts = config.compilerOpts;
+  final compilerOpts = withDefaultWasmTarget(config.compilerOpts);
   clangCmdArgs = createDynamicStringArray(compilerOpts);
 
   cmdLen = config.compilerOpts.length;
