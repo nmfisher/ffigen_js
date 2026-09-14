@@ -69,6 +69,18 @@ dart pub get
 dart run lib/src/jsgen/executables/jsgen.dart --config /path/to/your/project/jsgen_config.yaml
 ```
 
+### Target triple
+
+Headers are parsed with the `wasm32-unknown-emscripten` target by default, so
+types like `size_t` and `long` resolve with the Wasm ABI rather than your
+host's ABI. To use a different target:
+
+```yaml
+compiler-opts:
+  - '-target'
+  - 'wasm32-unknown-wasip1'
+```
+
 ## What's not suported
 
 ### Compilers other than Emscripten

@@ -11,6 +11,7 @@ import 'package:pub_semver/pub_semver.dart';
 import 'package:quiver/pattern.dart' as quiver;
 
 import '../code_generator.dart';
+import '../strings.dart' as strings;
 import 'config.dart';
 import 'path_finder.dart';
 
@@ -364,18 +365,43 @@ class YamlMemberIncluder {
   }
 }
 
-List<String> defaultCompilerOpts({bool macIncludeStdLib = true}) => [
+List<String> defaultCompilerOpts({bool macIncludeStdLib = false}) => [
       if (Platform.isMacOS && macIncludeStdLib)
         ...getCStandardLibraryHeadersForMac(),
       if (Platform.isMacOS) '-Wno-nullability-completeness',
     ];
+
+/// Prepends the default Wasm target triple to [compilerOpts] unless the user
+/// already specified a `-target` (or its clang spelling `--target`).
+///
+/// libclang parses headers with the host ABI by default, which resolves
+/// target-dependent types like `size_t` incorrectly for Wasm (e.g. 64-bit on
+/// 64-bit hosts). Clang's `-target` option is last-wins, so the default is
+/// prepended and any user option still overrides it.
+List<String> withDefaultWasmTarget(List<String> compilerOpts) {
+  // Matches '-target', '-target=<triple>' and '--target=<triple>'.
+  // (Not '--target <triple>' — clang rejects that combined spelling.)
+  final hasUserTarget = compilerOpts.contains(strings.targetFlag) ||
+      compilerOpts.any(
+          (opt) => opt.startsWith('-target=') || opt.startsWith('--target='));
+  return [
+    if (!hasUserTarget) ...[strings.targetFlag, strings.defaultWasmTarget],
+    ...compilerOpts,
+  ];
+}
 
 /// Handles config for automatically added compiler options.
 class CompilerOptsAuto {
   final bool macIncludeStdLib;
 
   CompilerOptsAuto({bool? macIncludeStdLib})
-      : macIncludeStdLib = macIncludeStdLib ?? true;
+      // The macOS SDK headers use the host (arm64/x64) ABI and conflict with
+      // the default wasm32 target (e.g. "Unsupported architecture" in
+      // sys/cdefs.h). C standard library types used by typical Wasm headers
+      // (stddef.h, stdint.h, stdbool.h) come from clang's built-in headers,
+      // so this defaults to off. Opt back in with
+      // compiler-opts-automatic.macos.include-c-standard-library: true.
+      : macIncludeStdLib = macIncludeStdLib ?? false;
 
   /// Extracts compiler options based on OS and config.
   List<String> extractCompilerOpts() {

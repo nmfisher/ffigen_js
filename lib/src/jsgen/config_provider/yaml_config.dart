@@ -441,7 +441,11 @@ class YamlConfig implements Config {
                       HeterogeneousMapEntry(
                         key: strings.includeCStdLib,
                         valueConfigSpec: BoolConfigSpec(),
-                        defaultValue: (node) => true,
+                        // Off by default: the macOS SDK headers use the host
+                        // ABI and conflict with the default wasm32 target.
+                        // Wasm headers get stddef.h/stdint.h/stdbool.h from
+                        // clang's built-in headers instead.
+                        defaultValue: (node) => false,
                       )
                     ],
                   ),
