@@ -4,7 +4,6 @@
 
 import 'package:collection/collection.dart';
 import 'package:logging/logging.dart';
-import 'package:path/path.dart' as p;
 
 import '../code_generator.dart';
 import '../strings.dart' as strings;
@@ -298,7 +297,7 @@ extension type GeneratedBindings(NativeLibrary _) implements JSObject {
 
     // Warn for macros.
     final hasMacroBindings = bindings.any(
-      (element) => element is Constant && element.usr!.contains('@macro@'),
+      (element) => element is Constant && element.usr.contains('@macro@'),
     );
     if (hasMacroBindings) {
       _logger.info(
@@ -310,11 +309,11 @@ extension type GeneratedBindings(NativeLibrary _) implements JSObject {
     // Remove internal bindings and macros.
     bindings.removeWhere((element) {
       return element.isInternal ||
-          (element is Constant && element.usr!.contains('@macro@'));
+          (element is Constant && element.usr.contains('@macro@'));
     });
 
     // Sort bindings alphabetically by USR.
-    bindings.sort((a, b) => a.usr!.compareTo(b.usr!));
+    bindings.sort((a, b) => a.usr.compareTo(b.usr));
 
     final usesFfiNative = true;
 
@@ -329,17 +328,5 @@ extension type GeneratedBindings(NativeLibrary _) implements JSObject {
         },
       },
     };
-  }
-
-  static String _objcImport(String entryPoint, String outDir) {
-    final frameworkHeader = parseObjCFrameworkHeader(entryPoint);
-
-    if (frameworkHeader == null) {
-      // If it's not a framework header, use a relative import.
-      return '#import "${p.relative(entryPoint, from: outDir)}"\n';
-    }
-
-    // If it's a framework header, use a <> style import.
-    return '#import <$frameworkHeader>\n';
   }
 }

@@ -2,10 +2,8 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-import '../config_provider/config_types.dart';
 import 'binding.dart';
 import 'binding_string.dart';
-import 'compound.dart';
 import 'pointer.dart';
 import 'type.dart';
 import 'utils.dart';
@@ -43,10 +41,8 @@ class Global extends Binding {
       s.write(makeDartDoc(dartDoc!));
     }
     final dartType = type.getDartType(w);
-    final ffiDartType = type.getInteropDartType(w);
-    final cType = type.getInteropDartType(w);
 
-      if (type case final ConstantArray arr) {
+      if (type case ConstantArray()) {
         throw UnimplementedError();
       }
 

@@ -52,8 +52,8 @@ class Library {
       for (final b in this.bindings) {
         if (b is Struct) {
           final pack = packingOverride(Declaration(
-            usr: b.usr!,
-            originalName: b.originalName!,
+            usr: b.usr,
+            originalName: b.originalName,
           ));
           if (pack != null) {
             b.pack = pack.value;

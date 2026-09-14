@@ -239,8 +239,8 @@ void fillCompoundMembersIfNeeded(
 void _compoundMembersVisitor(
     clang_types.CXCursor cursor, _ParsedCompound parsed) {
   final decl = Declaration(
-    usr: parsed.compound.usr!,
-    originalName: parsed.compound.originalName!,
+    usr: parsed.compound.usr,
+    originalName: parsed.compound.originalName,
   );
   try {
     switch (cursor.kind) {

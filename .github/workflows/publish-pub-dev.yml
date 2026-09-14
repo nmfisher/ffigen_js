@@ -5,7 +5,7 @@ name: Publish to pub.dev
 # matches the `v{{version}}` pattern configured on the package's pub.dev admin
 # page, and the tag version equals the version in pubspec.yaml.
 #
-# See docs/RELEASING.md for the full runbook (one-time setup + per-release flow).
+# See doc/RELEASING.md for the full runbook (one-time setup + per-release flow).
 
 on:
   push:

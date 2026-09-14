@@ -100,7 +100,7 @@ jobs:
               echo "::notice::v$v was already released ($released) — nothing to do."
               echo "should_release=false" >> "$GITHUB_OUTPUT"
             else
-              echo "::error::Tag v$v exists but the release never completed. Possible causes: the RELEASE_TOKEN PAT lacks 'Actions: read and write' (the tag push fired no workflows), or a publish run failed. Fix the PAT, delete the tag (git push origin :refs/tags/v$v), or bump the version, then re-dispatch. See docs/RELEASING.md."
+              echo "::error::Tag v$v exists but the release never completed. Possible causes: the RELEASE_TOKEN PAT lacks 'Actions: read and write' (the tag push fired no workflows), or a publish run failed. Fix the PAT, delete the tag (git push origin :refs/tags/v$v), or bump the version, then re-dispatch. See doc/RELEASING.md."
               exit 1
             fi
           else
@@ -207,7 +207,7 @@ jobs:
             echo ""
             echo "- Tag: \`v$v\` at \`$TIP\`"
             echo "- The tag push should now fire **Publish to pub.dev**."
-            echo "- If no run appears within ~5 minutes, the RELEASE_TOKEN PAT is missing **Actions: read and write** — see docs/RELEASING.md."
+            echo "- If no run appears within ~5 minutes, the RELEASE_TOKEN PAT is missing **Actions: read and write** — see doc/RELEASING.md."
           } >> "$GITHUB_STEP_SUMMARY"
 
   watch-release:
@@ -230,7 +230,7 @@ jobs:
             sleep 25
           done
           if [ -z "$ID" ]; then
-            echo "::error::No 'Publish to pub.dev' run fired for tag v$v within 5 minutes. The tag push likely fired no workflows: the RELEASE_TOKEN fine-grained PAT needs BOTH 'Contents: read and write' AND 'Actions: read and write' (a Contents-only PAT pushes silently but fires zero runs). Fix the PAT, delete the tag (git push origin :refs/tags/v$v), and re-dispatch. See docs/RELEASING.md."
+            echo "::error::No 'Publish to pub.dev' run fired for tag v$v within 5 minutes. The tag push likely fired no workflows: the RELEASE_TOKEN fine-grained PAT needs BOTH 'Contents: read and write' AND 'Actions: read and write' (a Contents-only PAT pushes silently but fires zero runs). Fix the PAT, delete the tag (git push origin :refs/tags/v$v), and re-dispatch. See doc/RELEASING.md."
             exit 1
           fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"

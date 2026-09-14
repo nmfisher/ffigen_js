@@ -21,9 +21,6 @@ class HandleType extends Type {
   String getNativeType({String varName = ''}) => 'void* $varName';
 
   @override
-  bool get sameFfiDartAndCType => false;
-
-  @override
   String toString() => 'Handle';
   
   @override
