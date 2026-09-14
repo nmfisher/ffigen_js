@@ -200,4 +200,43 @@ void main() {
     expect(output, contains('callback.toJS'));
     expect(output, isNot(contains('this.toJS')));
   });
+
+  test('opaque handle arrays use PointerClass for nested pointer storage', () {
+    final handle = Typealias(
+      usr: 'c:opaque_handle',
+      originalName: 'OpaqueHandle',
+      name: 'OpaqueHandle',
+      type: PointerType(NativeType(SupportedNativeType.voidType)),
+    );
+    final function = Func(
+      name: 'getHandles',
+      returnType: PointerType(handle),
+      parameters: [],
+      usr: 'c:@F@getHandles',
+      originalName: 'getHandles',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(
+      output,
+      contains('external Pointer<PointerClass<Void>> _getHandles('),
+    );
+    expect(
+      output,
+      contains('Pointer<PointerClass<Void>> getHandles('),
+    );
+    expect(
+      output,
+      contains('return Pointer<PointerClass<Void>>(result);'),
+    );
+    expect(output, isNot(contains('Pointer<Pointer<Void>>')));
+  });
 }

@@ -34,18 +34,20 @@ class PointerType extends Type {
 
   @override
   String getInteropDartType(Writer w) {
-    if (child is PointerType || child is Struct) {
-      return 'Pointer<${child.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
+    final resolvedChild = child.typealiasType;
+    if (resolvedChild is PointerType || resolvedChild is Struct) {
+      return 'Pointer<${resolvedChild.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
     }
     return 'Pointer<${child.getWasmInteropType(w).replaceAll("Pointer<", "PointerClass<")}>';
   }
 
   @override
   String getDartType(Writer w) {
+    final resolvedChild = child.typealiasType;
     if (child == NativeType(SupportedNativeType.char)) {
       return 'Pointer<Char>';
-    } else if (child is PointerType || child is Struct) {
-      return 'Pointer<${child.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
+    } else if (resolvedChild is PointerType || resolvedChild is Struct) {
+      return 'Pointer<${resolvedChild.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
     } else {
       return 'Pointer<${child.getWasmInteropType(w)}>';
     }

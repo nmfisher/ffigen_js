@@ -28,9 +28,21 @@
   through `HEAPU8` instead of requiring a `HEAPF32` runtime export.
 - Removes `return_struct_for_address_test` from the example's leaf include
   list: dart:ffi leaf calls cannot return structs by value.
+- First release published via GitHub Actions OIDC automated publishing.
 
 ## 0.0.15-pre
 
+- Parses headers with the `wasm32-unknown-emscripten` target by default, so
+  target-dependent C types (`size_t`, `long`, ...) resolve with the Wasm ABI
+  instead of the host ABI (e.g. `size_t` was 64-bit and generated mismatched
+  `JSBigInt` bindings on 64-bit hosts). Override with `compiler-opts:
+  ['-target', '<other-triple>']`.
+- Disables the automatic macOS SDK include paths by default
+  (`compiler-opts-automatic.macos.include-c-standard-library` now defaults to
+  `false`): they use the host ABI and conflict with the wasm32 target. Wasm
+  headers get `stddef.h`/`stdint.h`/`stdbool.h` from clang's built-in headers.
+  Opt back in with `compiler-opts-automatic.macos.include-c-standard-library:
+  true`.
 - Fixes standalone enum emission: named enums at the translation-unit root
   were routed through the macro-deferral path and only emitted when an
   included function signature referenced their type. They now go through the

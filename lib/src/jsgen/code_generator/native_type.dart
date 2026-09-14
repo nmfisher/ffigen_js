@@ -95,6 +95,7 @@ class NativeType extends Type {
         case 'long':
           return 'Int32';
         case 'int64_t':
+        case 'uint64_t':
           return 'Int64';
         case 'float':
           return 'Float32';

@@ -193,7 +193,6 @@ Type makeTypeFromRawVarArgType(
     // Use library import if specified (E.g - ffi.UintPtr or custom.MyStruct)
     final rawVarArgTypeSplit = rawBaseType.split('.');
     if (rawVarArgTypeSplit.length == 1) {
-      final typeName = rawVarArgTypeSplit[0].replaceAll(' ', '');
       // baseType = SelfImportedType(typeName, typeName);
       throw UnimplementedError();
     } else if (rawVarArgTypeSplit.length == 2) {

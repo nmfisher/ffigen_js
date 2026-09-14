@@ -140,8 +140,6 @@ Type getCodeGenType(
         ignoreFilter: ignoreFilter,
         originalCursor: originalCursor,
       );
-      final isNullable = clang.clang_Type_getNullability(cxtype) ==
-          clang_types.CXTypeNullabilityKind.CXTypeNullability_Nullable;
       return innerType;
     default:
       var typeSpellKey =

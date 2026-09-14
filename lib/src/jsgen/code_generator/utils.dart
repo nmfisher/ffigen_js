@@ -8,8 +8,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'dart_keywords.dart';
-import 'pointer.dart';
-import 'type.dart';
 import 'writer.dart';
 
 class UniqueNamer {

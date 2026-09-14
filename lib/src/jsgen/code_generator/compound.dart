@@ -93,14 +93,6 @@ abstract class Compound extends BindingType {
     }
   }
 
-  String _getInlineArrayTypeString(Type type, Writer w) {
-    if (type is ConstantArray) {
-      return 'Array<'
-          '${_getInlineArrayTypeString(type.child, w)}>';
-    }
-    return type.getWasmInteropType(w);
-  }
-
   @override
   BindingString toBindingString(Writer w, {bool writeModuleBinding = false}) {
     final bindingType =

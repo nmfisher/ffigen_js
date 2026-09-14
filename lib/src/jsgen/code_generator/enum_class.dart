@@ -6,7 +6,6 @@ import 'package:collection/collection.dart';
 
 import 'binding.dart';
 import 'binding_string.dart';
-import 'imports.dart';
 import 'type.dart';
 import 'utils.dart';
 import 'writer.dart';

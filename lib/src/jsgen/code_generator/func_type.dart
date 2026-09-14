@@ -71,9 +71,12 @@ class FunctionType extends Type {
   }
 
   String get wasmSignature {
-    var signature = '${returnType.wasmType}';
+    var ft = this is Typealias
+        ? typealiasType as FunctionType
+        : this;
+    var signature = '${ft.returnType.wasmType}';
 
-    for (final param in parameters) {
+    for (final param in ft.parameters) {
       signature += param.type.wasmType;
     }
     return signature;

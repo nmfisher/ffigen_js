@@ -4,7 +4,6 @@
 
 import '../code_generator.dart';
 
-import '../strings.dart' as strings;
 import 'binding_string.dart';
 import 'utils.dart';
 import 'writer.dart';
