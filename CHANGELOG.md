@@ -1,3 +1,8 @@
+## 0.0.16-pre
+
+- First release published via GitHub Actions OIDC automated publishing.
+- No code changes since `0.0.15-pre`.
+
 ## 0.0.15-pre
 
 - Parses headers with the `wasm32-unknown-emscripten` target by default, so

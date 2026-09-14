@@ -1,0 +1,170 @@
+name: Publish to pub.dev
+
+# Releases ffigen_js to pub.dev using GitHub OIDC automated publishing (no
+# long-lived secrets). pub.dev trusts an OIDC token only when a pushed git tag
+# matches the `v{{version}}` pattern configured on the package's pub.dev admin
+# page, and the tag version equals the version in pubspec.yaml.
+#
+# See docs/RELEASING.md for the full runbook (one-time setup + per-release flow).
+
+on:
+  push:
+    tags:
+      # v0.0.15, v0.1.0-pre, v0.0.15-pre.99
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    # Manual dispatch runs the `validate` (dry-run) job only — no publish.
+    inputs:
+      note:
+        description: 'Note (dry-run validation only; publishing requires a tag push)'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write # required to mint the OIDC token for pub.dev
+  contents: read
+
+concurrency:
+  # Never cancel a publish already in flight.
+  group: publish-pub-dev-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate (dry-run)
+    runs-on: ubuntu-24.04
+    # Runs on tag push (pre-publish gate) AND on manual dispatch (pre-flight).
+    if: ${{ github.event_name != 'pull_request' }}
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+      already-published: ${{ steps.check_pub.outputs.already_published }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Check version (tag match)
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//; s/[[:space:]]*$//')"
+          echo "pubspec version: $v"
+          # On a tag push, the tag (minus leading 'v') must equal the pubspec version.
+          # pub.dev OIDC enforces this anyway — fail here with a clearer message.
+          ref="${GITHUB_REF:-}"
+          if [[ "$ref" == refs/tags/v* ]]; then
+            tag_v="${ref#refs/tags/v}"
+            echo "tag version:     $tag_v"
+            if [ "$tag_v" != "$v" ]; then
+              echo "::error::Tag v$tag_v does not match pubspec version $v."
+              exit 1
+            fi
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Check pub.dev for existing versions
+        id: check_pub
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ steps.versions.outputs.version }}"
+          exists() {
+            # Returns 0 if version $2 is listed in pub.dev's API for package $1.
+            local pkg="$1" want="$2"
+            curl -fsSL "https://pub.dev/api/packages/$pkg" \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); want=sys.argv[1]; sys.exit(0 if want in [v['version'] for v in d.get('versions',[])] else 1)" "$want" \
+              || return 1
+          }
+          if exists ffigen_js "$v"; then
+            echo "::notice::ffigen_js $v is already on pub.dev"
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop if already published
+        if: steps.check_pub.outputs.already_published == 'true'
+        shell: bash
+        run: echo "ffigen_js already on pub.dev at ${{ steps.versions.outputs.version }}. Skipping dry-run."
+
+      - name: Dry-run publish
+        if: steps.check_pub.outputs.already_published != 'true'
+        run: dart pub publish --dry-run
+
+  tests:
+    # Full test suite. Only for a real tag push (not the dry-run manual
+    # dispatch) so releases can't ship without all checks green.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    name: Test suite
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Run tests
+        run: dart test
+
+  publish:
+    name: Publish to pub.dev
+    needs: [validate, tests]
+    # Only a real tag push publishes. workflow_dispatch never reaches here.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.validate.outputs.already-published != 'true' }}
+    runs-on: ubuntu-24.04
+    environment: pub.dev # maintainer approval gate
+    steps:
+      - uses: actions/checkout@v4
+
+      # set up the Dart SDK and provision the OIDC publishing credential.
+      - name: Set up Dart SDK (provision OIDC)
+        uses: dart-lang/setup-dart@v1
+
+      - name: Re-check version & pub.dev state
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//; s/[[:space:]]*$//')"
+          tag_v="${GITHUB_REF#refs/tags/v}"
+          if [ "$tag_v" != "$v" ]; then
+            echo "::error::Tag v$tag_v != pubspec version $v"; exit 1
+          fi
+          echo "Publishing version $v"
+
+      - name: Publish ffigen_js
+        shell: bash
+        # pipefail (on by default for bash steps) propagates a publish failure through tee.
+        run: dart pub publish --force 2>&1 | tee "$GITHUB_WORKSPACE/ffigen_js_publish.log"
+
+      - name: Wait for ffigen_js to be resolvable on pub.dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(grep -m1 '^version:' pubspec.yaml | sed 's/^version:[[:space:]]*//; s/[[:space:]]*$//')"
+          echo "Polling pub.dev for ffigen_js@$v ..."
+          for i in $(seq 1 30); do
+            if curl -fsSL "https://pub.dev/api/packages/ffigen_js" \
+               | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if '$v' in [x['version'] for x in d.get('versions',[])] else 1)"; then
+              echo "ffigen_js@$v is live on pub.dev"
+              exit 0
+            fi
+            echo "  not visible yet (attempt $i/30); waiting 10s"
+            sleep 10
+          done
+          echo "::error::ffigen_js@$v did not appear on pub.dev within 5 minutes."
+          exit 1
+
+      - name: Upload publish logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-logs-${{ github.sha }}
+          path: ${{ github.workspace }}/ffigen_js_publish.log
+          if-no-files-found: ignore
+          retention-days: 14
