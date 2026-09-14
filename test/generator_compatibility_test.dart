@@ -227,7 +227,7 @@ void main() {
 
     expect(
       output,
-      contains('external Pointer<PointerClass<Void>> _getHandles('),
+      contains('external int _getHandles('),
     );
     expect(
       output,
@@ -235,7 +235,7 @@ void main() {
     );
     expect(
       output,
-      contains('return Pointer<PointerClass<Void>>(result);'),
+      contains('return Pointer(result).cast();'),
     );
     expect(output, isNot(contains('Pointer<Pointer<Void>>')));
   });
