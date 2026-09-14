@@ -2,6 +2,9 @@ import 'dart:typed_data';
 
 import 'package:ffigen_js_example/generated_bindings_js.g.dart';
 
+import '../../test/support/generated_api_contract.dart';
+import '../../test/support/typed_data_address_contract.dart';
+
 void _expectHeapAddress(TypedData data, int address, String label) {
   assert(
     address == data.offsetInBytes,
@@ -13,6 +16,16 @@ void _expectHeapAddress(TypedData data, int address, String label) {
 void main(List<String> args) async {
   print("Running WASM example");
   GeneratedBindings.initBindings("module");
+
+  for (final entry in typedDataAddressContract().entries) {
+    entry.value();
+  }
+  print('Shared TypedData.address call sites passed on Wasm');
+
+  for (final entry in generatedApiContract().entries) {
+    entry.value();
+  }
+  print('Shared generated-API call sites passed on Wasm');
 
   assert(returns_bool() == false);
 
@@ -53,7 +66,7 @@ void main(List<String> args) async {
   var ptr = MyStruct.stackAlloc();
   var struct = ptr.toDart();
   struct.a = 20.0;
-  struct.b = Pointer<Char>(0 as Pointer<Char>);
+  struct.b = Pointer<Char>(0);
   struct.c = 8;
 
   assert(ptr.toDart().a == 20.0, ptr.toDart().a);
@@ -257,6 +270,11 @@ void main(List<String> args) async {
   assert(makeUint8List(0).address.addr == 0,
       'An empty TypedData value should have a null address');
 
+  NativeLibrary.instance.stackRestore(typedDataStack);
+
+  // Ordinary Dart TypedData is registered up front. The explicit scope owns
+  // copying and cleanup; generated calls still take integer-backed Pointers.
+  // On native the same scope simply runs its callback without copying.
   final dartUint8 = Uint8List.fromList([17]);
   final dartInt16 = Int16List.fromList([-18]);
   final dartUint16 = Uint16List.fromList([60000]);
@@ -265,57 +283,228 @@ void main(List<String> args) async {
   final dartUint32 = Uint32List.fromList([4000000000]);
   final dartFloat32 = Float32List.fromList([1.25]);
   final dartFloat64 = Float64List.fromList([-2.5]);
-  final dartUint8Address = dartUint8.address;
-  final dartInt16Address = dartInt16.address;
-  final dartUint16Address = dartUint16.address;
-  final dartInt32Address = dartInt32.address;
-  final dartInt64Address = dartInt64.address;
-  final dartUint32Address = dartUint32.address;
-  final dartFloat32Address = dartFloat32.address;
-  final dartFloat64Address = dartFloat64.address;
 
+  withNativeBuffers([
+    dartUint8,
+    dartInt16,
+    dartUint16,
+    dartInt32,
+    dartInt64,
+    dartUint32,
+    dartFloat32,
+    dartFloat64,
+  ], () {
+    assert(
+        verify_typed_data_inputs_for_address_test(
+          dartUint8.address,
+          dartInt16.address,
+          dartUint16.address,
+          dartInt32.address,
+          dartInt64.address,
+          dartUint32.address,
+          dartFloat32.address,
+          dartFloat64.address,
+        ),
+        'Ordinary Dart typed lists were not copied into Wasm memory correctly');
+    assert(pointer_is_on_stack(dartUint8.address),
+        'A small buffer scope was not allocated on the stack');
+    write_uint8_for_address_test(dartUint8.address);
+    write_int16_for_address_test(dartInt16.address);
+    write_uint16_for_address_test(dartUint16.address);
+    write_int32_for_address_test(dartInt32.address);
+    write_int64_for_address_test(dartInt64.address);
+    write_uint32_for_address_test(dartUint32.address);
+    write_float32_for_address_test(dartFloat32.address);
+    write_float64_for_address_test(dartFloat64.address);
+  });
   assert(
-      verify_typed_data_inputs_for_address_test(
-        dartUint8Address,
-        dartInt16Address,
-        dartUint16Address,
-        dartInt32Address,
-        dartInt64Address,
-        dartUint32Address,
-        dartFloat32Address,
-        dartFloat64Address,
-      ),
-      'Ordinary Dart typed lists were not copied into Wasm memory correctly');
+      dartUint8[0] == 201 &&
+          dartInt16[0] == -1234 &&
+          dartUint16[0] == 54321 &&
+          dartInt32[0] == -123456789 &&
+          dartInt64[0] == -9007199254740995 &&
+          dartUint32[0] == 3456789012 &&
+          dartFloat32[0] == 12.5 &&
+          dartFloat64[0] == 9876.5,
+      'Native writes were not copied back to ordinary Dart typed lists');
+  final largeInput = Uint8List(64 * 1024)..[0] = 5;
+  withNativeBuffers([largeInput], () {
+    assert(!pointer_is_on_stack(largeInput.address),
+        'A large buffer scope was not allocated on the heap');
+    assert(sum_bytes(largeInput.address, largeInput.length) == 5,
+        'A large temporary input was not readable by native code');
+    write_uint8_for_address_test(largeInput.address);
+  });
+  assert(largeInput[0] == 201,
+      'A native write was not copied back to a large Dart list');
 
-  write_uint8_for_address_test(dartUint8Address);
-  write_int16_for_address_test(dartInt16Address);
-  write_uint16_for_address_test(dartUint16Address);
-  write_int32_for_address_test(dartInt32Address);
-  write_int64_for_address_test(dartInt64Address);
-  write_uint32_for_address_test(dartUint32Address);
-  write_float32_for_address_test(dartFloat32Address);
-  write_float64_for_address_test(dartFloat64Address);
+  // Separate address expressions over the same backing buffer must resolve to
+  // one allocation so native pointer identity and overlapping writes agree.
+  final aliasedData = Uint8List.fromList([1, 2, 3, 4]);
+  final aliasedView = Uint8List.sublistView(aliasedData, 1);
+  withNativeBuffers([aliasedData, aliasedView], () {
+    assert(verify_typed_data_alias(aliasedData.address, aliasedView.address),
+        'Overlapping TypedData views did not preserve pointer aliasing');
+  });
+  assert(aliasedData[1] == 77 && aliasedView[0] == 77,
+      'An aliased native write was not copied back to the Dart buffer');
+
+  final mixedBuffer = Uint8List(16);
+  final mixedBytes = Uint8List.view(mixedBuffer.buffer, 1, 7);
+  final mixedWords = Uint32List.view(mixedBuffer.buffer, 4, 1);
+  withNativeBuffers([mixedBytes, mixedWords], () {
+    assert(verify_typed_data_alignment(mixedBytes.address, mixedWords.address),
+        'Mixed-type aliases lost their alignment or relative offsets');
+  });
   assert(
-      dartUint8[0] == 17 &&
-          dartInt16[0] == -18 &&
-          dartUint16[0] == 60000 &&
-          dartInt32[0] == -1234567 &&
-          dartInt64[0] == -9007199254740993 &&
-          dartUint32[0] == 4000000000 &&
-          dartFloat32[0] == 1.25 &&
-          dartFloat64[0] == -2.5,
-      'Native writes to copied inputs unexpectedly changed a Dart list');
+      mixedWords[0] == 123456, 'An aligned native write was not copied back');
 
-  NativeLibrary.instance.stackRestore(typedDataStack);
+  // The combined aligned size determines where the entire scope is allocated.
+  // Both paths must copy back and release memory even when the body throws.
+  for (final length in [16 * 1024, 16 * 1024 + 1]) {
+    final first = Uint8List(length);
+    final second = Uint8List(length);
+    final marker = NativeLibrary.instance.stackSave();
+    final failure = StateError('native call failed');
+    try {
+      withNativeBuffers([first, second], () {
+        final firstRaw = first.address;
+        final secondRaw = second.address;
+        final onStack = length == 16 * 1024;
+        assert(pointer_is_on_stack(firstRaw) == onStack);
+        assert(pointer_is_on_stack(secondRaw) == onStack);
+        assert(secondRaw.addr - firstRaw.addr == ((length + 15) & ~15),
+            'Independent ranges were not placed in one aligned block');
+        firstRaw.asTypedList(1)[0] = 21;
+        secondRaw.asTypedList(1)[0] = 22;
+        throw failure;
+      });
+    } on StateError catch (error) {
+      assert(identical(error, failure));
+    }
+    assert(first[0] == 21 && second[0] == 22,
+        'A throwing call did not copy back both ranges');
+    assert(NativeLibrary.instance.stackSave().addr == marker.addr,
+        'A throwing call did not restore the stack');
+  }
 
-  final largeDartUint8 = Uint8List(32 * 1024)..[0] = 99;
-  final largeDartUint8Address = largeDartUint8.address;
-  assert(largeDartUint8Address.asTypedList(1)[0] == 99,
-      'The malloc-backed input was not copied into Wasm memory');
-  write_uint8_for_address_test(largeDartUint8Address);
-  assert(largeDartUint8[0] == 99,
-      'A native write to a malloc-backed copy changed the Dart list');
-  largeDartUint8Address.free();
+  final resultMarker = NativeLibrary.instance.stackSave();
+  final resultInput = Uint8List.fromList([9]);
+  final resultValues = withNativeBuffers([resultInput], () {
+    final result = return_struct_for_address_test(resultInput.address);
+    // Stack-backed return storage also expires at scope exit. Read it here.
+    return (result.a, result.c);
+  });
+  makeUint8List(128).fillRange(0, 128, 0);
+  assert(resultValues.$1 == 9 && resultValues.$2 == 42);
+  NativeLibrary.instance.stackRestore(resultMarker);
+
+  // A scoped address is a real integer and can be reused until scope exit.
+  final reusableData = Uint8List.fromList([6, 7]);
+  withNativeBuffers([reusableData], () {
+    final reusableAddress = reusableData.address;
+    final int rawAddress = reusableAddress;
+    assert(rawAddress == reusableAddress.addr);
+    assert((reusableAddress + 1).addr == rawAddress + 1);
+    assert(reusableAddress.cast<Int8>().addr == rawAddress);
+    assert(sum_bytes(reusableAddress, reusableData.length) == 13,
+        'A scoped address was not readable');
+    write_uint8_for_address_test(reusableAddress);
+    assert(sum_bytes(reusableAddress, reusableData.length) == 208);
+    assert(reusableData[0] == 6, 'Copy-back should happen at scope exit');
+  });
+  assert(reusableData[0] == 201, 'A scoped write was not copied back');
+
+  var rejected = false;
+  try {
+    reusableData.address;
+  } on StateError {
+    rejected = true;
+  }
+  assert(rejected, 'Ordinary .address must require an active registration');
+  withNativeBuffers([reusableData], () {
+    var unregisteredRejected = false;
+    try {
+      Uint8List(1).address;
+    } on StateError {
+      unregisteredRejected = true;
+    }
+    assert(unregisteredRejected,
+        'Unregistered buffers must not allocate silently');
+    final view = Uint8List.sublistView(reusableData, 1);
+    assert(view.address.addr == reusableData.address.addr + 1);
+    final before = NativeLibrary.instance.stackSave();
+    withNativeBuffers([view], () {
+      assert(view.address.addr == reusableData.address.addr + 1);
+      assert(NativeLibrary.instance.stackSave().addr == before.addr,
+          'Nested aliases must reuse existing storage');
+    });
+  });
+
+  // JS callbacks can reenter while the outer copy remains live. Native leaf
+  // TypedData.address calls cannot invoke Dart callbacks.
+  for (final length in [1, 64 * 1024]) {
+    final data = Uint8List(length)..[0] = 5;
+    final marker = NativeLibrary.instance.stackSave();
+    var called = false;
+    final callback = (() {
+      called = true;
+      assert(data[0] == 5);
+      final nested = Uint8List.fromList([3, 4]);
+      withNativeBuffers([nested], () {
+        write_uint8_for_address_test(nested.address);
+      });
+      assert(nested[0] == 201);
+    }).addFunction();
+    try {
+      withNativeBuffers([data], () {
+        update_bytes_with_callback(data.address, callback);
+      });
+    } finally {
+      callback.dispose();
+    }
+    assert(called && data[0] == 22);
+    assert(NativeLibrary.instance.stackSave().addr == marker.addr);
+  }
+
+  // Repeated inputs exceed the fixed Wasm heap if buffer scopes retain
+  // every temporary allocation.
+  for (var i = 0; i < 256; i++) {
+    final batchInput = Uint8List(64 * 1024)..[i % (64 * 1024)] = i % 256;
+    withNativeBuffers([batchInput], () {
+      sum_bytes(batchInput.address, batchInput.length);
+    });
+  }
+  // Views already backed by Emscripten memory remain caller-owned.
+  final borrowedMarker = NativeLibrary.instance.stackSave();
+  final borrowed = makeUint8List(8)
+    ..fillRange(0, 8, 0)
+    ..[2] = 9;
+  write_uint8_for_address_test(borrowed.address);
+  assert(borrowed[0] == 201,
+      'A native write did not reach an Emscripten-backed list');
+  assert(sum_bytes(borrowed.address, borrowed.length) == 210,
+      'An Emscripten-backed list was not readable after a native call');
+  final beforeBorrow = NativeLibrary.instance.stackSave();
+  withNativeBuffers([borrowed], () {
+    assert(NativeLibrary.instance.stackSave().addr == beforeBorrow.addr);
+    write_uint8_for_address_test(borrowed.address);
+    assert(borrowed[0] == 201);
+  });
+  NativeLibrary.instance.stackRestore(borrowedMarker);
+
+  // Data retained beyond one call uses explicit native allocation, as it does
+  // with dart:ffi, and remains valid until its pointer is freed.
+  final retainedPointer = malloc<Uint8>(3);
+  final retained = retainedPointer.asTypedList(3)..setAll(0, [9, 8, 7]);
+  assert(sum_bytes(retainedPointer, retained.length) == 24,
+      'Explicitly allocated data was not readable by native code');
+  write_uint8_for_address_test(retainedPointer);
+  assert(retained[0] == 201,
+      'Explicitly allocated data did not remain backed by Wasm memory');
+  retainedPointer.free();
+
+  print("Explicit TypedData.address buffer scopes passed");
 
   print("All TypedData accessor tests passed");
 

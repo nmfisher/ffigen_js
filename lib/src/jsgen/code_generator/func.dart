@@ -231,8 +231,8 @@ class Func extends Binding {
         userReturnType = ptrType.getDartType(w);
       }
 
-      interopReturnTypeConstructors
-          .add('return ${functionType.returnType.getDartType(w)}(result);');
+      interopReturnType = 'int';
+      interopReturnTypeConstructors.add('return Pointer(result).cast();');
     } else if (functionType.returnType is EnumClass &&
         !(functionType.returnType as EnumClass).generateAsInt) {
       interopReturnTypeConstructors.add(
@@ -256,20 +256,14 @@ class Func extends Binding {
     final userArgsString = userArguments
         .map((p) => '${p.type.getDartType(w)} ${p.name},\n')
         .join('');
+    bool isPointer(Type type) => type.typealiasType is PointerType;
     final interopArgsString = interopArguments
-        .map((p) => '${p.type.getInteropDartType(w)} ${p.name},\n')
+        .map((p) =>
+            '${isPointer(p.type) ? 'int' : p.type.getInteropDartType(w)} ${p.name},\n')
         .join('');
-    final invokeInteropArgsString = interopArguments.map((p) {
-      if (p.type.baseType is NativeFunc) {
-        return '${p.name}.cast()';
-      }
-
-      if (p.type is PointerType) {
-        if ((p.type.baseType is Struct)) {
-          return '${p.name}.cast()';
-        }
-
-        return '${p.name}'; // as ${p.type.getWasmInteropType(w)}';
+    final invokeInteropArgs = interopArguments.map((p) {
+      if (isPointer(p.type)) {
+        return '${p.name}.addr';
       }
 
       if (p.type is EnumClass) {
@@ -284,11 +278,6 @@ class Func extends Binding {
         return '${p.name}.toJSBigInt';
       }
 
-      if (p.type is Typealias && p.type.typealiasType is PointerType) {
-        var pointerType = p.type.typealiasType as PointerType;
-        return '${p.name} as ${pointerType.getWasmInteropType(w)}';
-      }
-
       return '${p.name}';
     }).join(',');
 
@@ -298,7 +287,7 @@ class Func extends Binding {
     } else {
       s.write('''$userReturnType $userFunctionName($userArgsString) {
               ${interopArgumentConstructors.join("\n")}
-              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgsString);
+              final result = GeneratedBindings.instance.$interopFunctionName($invokeInteropArgs);
               ${interopReturnTypeConstructors.join("\n")}
   }''');
     }

@@ -27,10 +27,178 @@ void main() {
     expect(externalBinding, greaterThanOrEqualTo(0));
     expect(publicWrapper, greaterThan(externalBinding));
     expect(output, isNot(contains('class NativeLibrary')));
+    expect(output, isNot(contains('withNativeCall')));
     expect(
       output,
       contains('GeneratedBindings.instance._addOne(value)'),
     );
+  });
+
+  test('JS wrappers accept Pointer arguments and invoke interop directly', () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final int32 = NativeType(SupportedNativeType.int32);
+    final function = Func(
+      name: 'readBytes',
+      returnType: int32,
+      parameters: [
+        Parameter(name: 'data', type: PointerType(uint8)),
+        Parameter(name: 'other', type: PointerType(uint8)),
+        Parameter(name: 'length', type: int32),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(output, contains('external int _readBytes(int data,'));
+    expect(output, contains('int readBytes(Pointer<Uint8> data,'));
+    expect(output, isNot(contains('isDeferred')));
+    expect(output, contains('_readBytes(data.addr,other.addr,length)'));
+    expect(output, isNot(contains('withNativeCall')));
+    expect(output, isNot(contains('withNativeBuffers')));
+    expect(output, isNot(contains('releaseTemporaryTypedDataAddress')));
+  });
+
+  test('void JS wrappers remain direct calls without leaf configuration', () {
+    final uint8 = NativeType(SupportedNativeType.uint8);
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.voidType),
+      parameters: [Parameter(name: 'data', type: PointerType(uint8))],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final writer = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    );
+
+    final output = writer.generate();
+
+    expect(
+        output,
+        contains('GeneratedBindings.instance._readBytes('
+            'data.addr)'));
+    expect(output, isNot(contains('withNativeCall')));
+  });
+
+  test('scope parameter passes through unchanged', () {
+    final function = Func(
+      name: 'readBytes',
+      returnType: NativeType(SupportedNativeType.int32),
+      parameters: [
+        Parameter(
+          name: 'scope',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readBytes',
+      originalName: 'readBytes',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    expect(output, contains('_readBytes(scope.addr)'));
+  });
+
+  test('returned structs retain caller-managed stack ownership', () {
+    final result = Struct(name: 'Result', members: [
+      Member(name: 'value', type: NativeType(SupportedNativeType.int32)),
+    ]);
+    final function = Func(
+      name: 'readResult',
+      returnType: result,
+      parameters: [
+        Parameter(
+          name: 'data',
+          type: PointerType(NativeType(SupportedNativeType.uint8)),
+        ),
+      ],
+      usr: 'c:@F@readResult',
+      originalName: 'readResult',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [result],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+
+    final allocation = output.indexOf('final Result_out = Result.stackAlloc()');
+    expect(allocation, greaterThanOrEqualTo(0));
+    expect(allocation, lessThan(output.indexOf('final result =')));
+    expect(output, isNot(contains('withNativeCall')));
+    expect(output, contains('return Result_out.toDart()'));
+  });
+
+  test('pointer typedefs retain user types but cross JS as integers', () {
+    final pointer = Typealias(
+        name: 'Bytes',
+        type: PointerType(NativeType(SupportedNativeType.uint8)));
+    final function = Func(
+      name: 'identity',
+      returnType: pointer,
+      parameters: [Parameter(name: 'data', type: pointer)],
+      usr: 'identity',
+      originalName: 'identity',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [pointer],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+    expect(output, contains('external int _identity(int data,'));
+    expect(output, contains('DartBytes identity(DartBytes data,'));
+    expect(output, contains('_identity(data.addr)'));
+    expect(output, contains('return Pointer(result).cast()'));
+  });
+
+  test('pointer callbacks convert integer JS arguments into Dart pointers', () {
+    final callback = NativeFunc(FunctionType(
+      returnType: NativeType(SupportedNativeType.voidType),
+      parameters: [
+        Parameter(
+            name: 'data',
+            type: PointerType(NativeType(SupportedNativeType.uint8)))
+      ],
+    ));
+    final function = Func(
+      name: 'invoke',
+      returnType: NativeType(SupportedNativeType.voidType),
+      parameters: [Parameter(name: 'callback', type: PointerType(callback))],
+      usr: 'invoke',
+      originalName: 'invoke',
+    );
+    final output = Writer(
+      bindings: [function],
+      typeBindings: [],
+      className: 'NativeLibrary',
+      silenceEnumWarning: true,
+      nativeEntryPoints: [],
+    ).generate();
+    expect(output, contains('final callback = (int arg0)'));
+    expect(output, contains('this(Pointer<T>(arg0))'));
+    expect(output, contains('callback.toJS'));
+    expect(output, isNot(contains('this.toJS')));
   });
 
   test('opaque handle arrays use PointerClass for nested pointer storage', () {
@@ -59,7 +227,7 @@ void main() {
 
     expect(
       output,
-      contains('external Pointer<PointerClass<Void>> _getHandles('),
+      contains('external int _getHandles('),
     );
     expect(
       output,
@@ -67,7 +235,7 @@ void main() {
     );
     expect(
       output,
-      contains('return Pointer<PointerClass<Void>>(result);'),
+      contains('return Pointer(result).cast();'),
     );
     expect(output, isNot(contains('Pointer<Pointer<Void>>')));
   });

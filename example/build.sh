@@ -1,6 +1,7 @@
 mkdir -p build
 dart run ../lib/src/jsgen/executables/jsgen.dart --config js_config.yaml || exit -1;
 dart compile wasm --enable-asserts  bin/example.dart -O0 --shared-memory=100 -v -o build/example.wasm || exit -1;
+dart compile wasm --enable-asserts ../tool/wasm/typed_data_address_wasm_test.dart -O0 --shared-memory=100 -o build/typed_data_address_test.wasm || exit -1;
 cd build
 emcc --no-entry \
     -lembind \
@@ -19,5 +20,6 @@ emcc --no-entry \
     ../native/src/example.cpp || exit -1;
 cp ../native/js/main.js .
 node main.js
+node ../tool/wasm/main.js
 
 #clang++ -dynamiclib -Inative/include -std=c++17 -o build/example.dylib native/src/example.cpp

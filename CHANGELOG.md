@@ -1,7 +1,34 @@
 ## 0.0.16-pre
 
+- Keeps `Pointer<T>` as an integer-backed extension type and generated functions
+  as direct calls with unchanged `Pointer<T>` parameters.
+- Adds `withNativeBuffers([data], () { nativeFunction(data.address, length); })`.
+  On native it simply executes the callback: built-in `dart:ffi` leaf calls
+  receive original TypedData storage without native allocation or copying.
+- On web the explicit scope copies ordinary Dart buffers into one temporary
+  block, copies writes back, and cleans up in `finally`. Blocks up to 32 KiB use
+  the Emscripten stack; larger blocks use the heap. `.address` returns a real
+  pointer inside a registered scope and otherwise rejects ordinary Dart lists.
+- Preserves aliases and alignment, supports contained views, and reuses outer
+  storage in nested scopes. Stack allocations made inside a stack-backed scope,
+  including generated return structs, expire at scope exit.
+- Keeps Wasm-backed lists and explicit allocations caller-owned. Public
+  `malloc` results are tracked so `Pointer.free()` releases them.
+- Adds `Int8List.address` support.
+- Adds a Wasm test suite (`tool/wasm/run.sh`) that runs the shared
+  TypedData address contract against the Emscripten heap, including
+  offset-base cases: views with non-zero offsets, mixed-type aliasing,
+  large odd-offset views, and heap-backed subviews.
+- Adds a shared generated-API contract that compiles the same call-site code
+  against the ffigen dart:ffi bindings (`cd example && dart test`, built via
+  native assets) and the jsgen JS bindings (Wasm), checking outputs on both
+  platforms: integer calls, typed lists of every width, view aliasing and
+  alignment, pointer returns, and enums.
+- Fixes `Pointer<Float>.asTypedList` on web to view the Emscripten heap
+  through `HEAPU8` instead of requiring a `HEAPF32` runtime export.
+- Removes `return_struct_for_address_test` from the example's leaf include
+  list: dart:ffi leaf calls cannot return structs by value.
 - First release published via GitHub Actions OIDC automated publishing.
-- No code changes since `0.0.15-pre`.
 
 ## 0.0.15-pre
 
