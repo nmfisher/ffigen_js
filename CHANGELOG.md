@@ -1,3 +1,9 @@
+## 0.0.17-pre
+
+- Register direct `malloc()` allocations so `free()`, `Pointer.free()` and
+  heap-backed typed-data views release them. Stack and borrowed pointers remain
+  excluded from heap release.
+
 ## 0.0.16-pre
 
 - First release published via GitHub Actions OIDC automated publishing.

@@ -318,8 +318,11 @@ extension ArrayFloat64Ext on Array<Float64> {
 
 late NativeLibrary _lib;
 
+/// Allocates bytes on the module heap. Release the result with [free].
 Pointer<T> malloc<T extends NativeType>(int numBytes) {
-  return _lib._malloc<T>(numBytes);
+  final ptr = _lib._malloc<T>(numBytes);
+  if (ptr != nullptr) _heapAllocations.add(ptr);
+  return ptr;
 }
 
 Pointer<T> stackAlloc<T extends NativeType>(int numBytes) {
@@ -548,7 +551,6 @@ Pointer<T> _getPointer<T extends NativeType>(TypedData data) {
     ptr = stackAlloc(data.lengthInBytes).cast<T>();
   } else {
     ptr = malloc<T>(data.lengthInBytes);
-    _heapAllocations.add(ptr);
   }
 
   return ptr;
