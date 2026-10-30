@@ -112,6 +112,13 @@ jobs:
       - name: Run tests
         run: dart test
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run JavaScript allocation regressions
+        run: dart test -p node test/allocation_test.dart
+
   publish:
     name: Publish to pub.dev
     needs: [validate, tests]
