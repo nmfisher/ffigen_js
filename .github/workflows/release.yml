@@ -215,6 +215,9 @@ jobs:
     needs: [check, tag]
     if: ${{ needs.check.outputs.should_release == 'true' }}
     runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Wait for Publish to pub.dev run
         id: publish
@@ -225,12 +228,12 @@ jobs:
           ID=""
           # shellcheck disable=SC2034  # loop counter
           for i in $(seq 1 12); do
-            ID="$(gh run list --workflow "Publish to pub.dev" --event push --branch "v$v" --limit 1 --json id --jq '.[0].id // ""' 2>/dev/null || true)"
+            ID="$(gh run list --workflow "Publish to pub.dev" --event push --branch "v$v" --limit 1 --json databaseId --jq '.[0].databaseId // ""')"
             [ -n "$ID" ] && break
             sleep 25
           done
           if [ -z "$ID" ]; then
-            echo "::error::No 'Publish to pub.dev' run fired for tag v$v within 5 minutes. The tag push likely fired no workflows: the RELEASE_TOKEN fine-grained PAT needs BOTH 'Contents: read and write' AND 'Actions: read and write' (a Contents-only PAT pushes silently but fires zero runs). Fix the PAT, delete the tag (git push origin :refs/tags/v$v), and re-dispatch. See doc/RELEASING.md."
+            echo "::error::No 'Publish to pub.dev' run found for tag v$v within 5 minutes. Check the tag push and publish workflow in Actions."
             exit 1
           fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"
@@ -244,9 +247,9 @@ jobs:
           URL="https://github.com/${{ github.repository }}/actions/runs/$PUBLISH_ID"
           # shellcheck disable=SC2034  # loop counter
           for i in $(seq 1 240); do # up to 2h; approval can pend for hours
-            STATE="$(gh api "repos/${{ github.repository }}/actions/runs/$PUBLISH_ID" --jq '{status, conclusion}' 2>/dev/null || true)"
-            STATUS="$(echo "$STATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || true)"
-            CONCL="$(echo "$STATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('conclusion',''))" 2>/dev/null || true)"
+            STATE="$(gh api "repos/${{ github.repository }}/actions/runs/$PUBLISH_ID" --jq '{status, conclusion}')"
+            STATUS="$(echo "$STATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")"
+            CONCL="$(echo "$STATE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('conclusion',''))")"
             if [ "$STATUS" = "completed" ]; then
               if [ "$CONCL" = "success" ]; then
                 echo "Publish succeeded: $URL"
@@ -257,7 +260,7 @@ jobs:
             fi
             # Approval-pending at the pub.dev environment: report and stop here —
             # the release is correctly waiting on a human.
-            PENDING="$(gh api "repos/${{ github.repository }}/actions/runs/$PUBLISH_ID/jobs" --jq '[.jobs[] | select(.status=="queued") | .steps[] | select(.name | ascii_downcase | contains("approval"))] | length' 2>/dev/null || echo 0)"
+            PENDING="$(gh api "repos/${{ github.repository }}/actions/runs/$PUBLISH_ID/pending_deployments" --jq 'length')"
             if [ "$PENDING" -gt 0 ]; then
               echo "Publish is awaiting approval at the pub.dev environment: $URL"
               exit 0
