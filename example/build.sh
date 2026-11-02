@@ -6,10 +6,16 @@ EMCC="${EMCC:-emcc}"
 NODE="${NODE:-node}"
 
 # One command runs generator tests and all example integration checks.
-(cd ..; "$DART" pub get; "$DART" test)
+(cd ..; "$DART" pub get; "$DART" test --reporter expanded)
 "$DART" pub get
 mkdir -p build
-"$DART" run ../lib/src/jsgen/executables/jsgen.dart --config js_config.yaml
+# libclang does not automatically discover Emscripten's C headers on Linux.
+emscripten_sysroot=$("$EMCC" --cflags | tr ' ' '\n' | sed -n 's/^--sysroot=//p')
+clang_resource_dir=$("$EMCC" -print-resource-dir)
+test -d "$emscripten_sysroot/include"
+test -d "$clang_resource_dir/include"
+"$DART" run ../lib/src/jsgen/executables/jsgen.dart --config js_config.yaml \
+  --compiler-opts "-ffreestanding --sysroot=$emscripten_sysroot -I$clang_resource_dir/include"
 "$DART" compile js -O2 bin/abi_layout_js.dart -o build/abi_layout.dart.js
 "$DART" compile wasm --enable-asserts bin/example.dart -O0 --shared-memory=100 -o build/example.wasm
 cd build

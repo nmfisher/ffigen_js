@@ -1,7 +1,10 @@
 #ifndef EXAMPLE_ABI_LAYOUT_H
 #define EXAMPLE_ABI_LAYOUT_H
 
-#include <stdint.h>
+// Keep the fixture self-contained for parser tests without a C sysroot.
+// These aliases match <stdint.h> on the Wasm32 target used by the example.
+typedef unsigned char uint8_t;
+typedef short int16_t;
 
 #ifdef __cplusplus
 extern "C" {
