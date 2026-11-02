@@ -12,6 +12,20 @@ async function runDartWasm() {
 
     globalThis['module'] = await example({"env":{"wasmMemory":memory}});
 
+    const nativeModule = globalThis.module;
+    nativeModule.allocations = [];
+    const stackAlloc = nativeModule.stackAlloc;
+    nativeModule.stackAlloc = bytes => {
+        nativeModule.allocations.push(bytes);
+        return stackAlloc(bytes);
+    };
+
+    if (process.argv.includes('--js')) {
+        globalThis.self = globalThis;
+        await import('./abi_layout.dart.js');
+        return;
+    }
+
     const wasmBytes = await readFile('example.wasm');
     const compiledApp = await compile(wasmBytes);
     

@@ -1,3 +1,15 @@
+## Unreleased
+
+- Use Clang's target ABI field offsets and record sizes for JS struct and union
+  bindings, including internal/tail padding and anonymous nested records.
+- Copy inline arrays and records by value instead of writing a pointer into
+  their storage. Preserve all dimensions in fixed-array size calculations.
+- Handle unaligned packed field access and read/write `Array<Float32>` using
+  four-byte float slots rather than eight-byte doubles.
+- Add Clang layout tests and extend the existing example with real Emscripten
+  ABI round trips for Dart-to-JS and Dart-to-Wasm. `bash example/build.sh` runs
+  the generator tests and all example checks locally and on pull requests.
+
 ## 0.0.17-pre
 
 - Register direct `malloc()` allocations so `free()`, `Pointer.free()` and

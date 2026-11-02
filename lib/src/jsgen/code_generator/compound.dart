@@ -26,6 +26,15 @@ abstract class Compound extends BindingType {
   /// Only supported for [CompoundType.struct].
   int? pack;
 
+  /// Canonical layout from Clang for the configured compilation target.
+  int? nativeSize;
+  int? nativeAlignment;
+
+  @override
+  int get sizeInBytes => isOpaque
+      ? 0
+      : nativeSize ?? (throw StateError('Missing native layout for $name'));
+
   /// Marker for checking if the dependencies are parsed.
   bool parsedDependencies = false;
 
@@ -114,9 +123,9 @@ abstract class Compound extends BindingType {
       localUniqueNamer.markUsed(m.type.getInteropDartType(w));
     }
 
-    /// Write @Packed(X) annotation if struct is packed.
+    // Packing is already represented by the explicit field offsets.
     if (isStruct && pack != null) {
-      s.write('@Packed($pack)\n');
+      s.write('// Native packing: $pack byte(s).\n');
     }
     final dartClassName = isStruct ? 'Struct' : 'Union';
     // Write class declaration.
@@ -134,8 +143,9 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
     Pointer<$enclosingClassName> get address => super.address.cast();
 ''');
     const depth = '  ';
-    int offset = 0;
     for (final m in members) {
+      final offset = m.offsetInBytes ??
+          (throw StateError('Missing native offset for $name.${m.name}'));
       m.name = localUniqueNamer.makeUnique(m.name);
       if (m.dartDoc != null) {
         s.write('$depth/// ');
@@ -154,35 +164,45 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
         _ => m.type is EnumClass ? '.toDartInt' : ''
       };
 
+      final resolvedType = m.type.typealiasType;
+      final memberAddress = 'this.address.addr + $offset';
+      if (resolvedType is ConstantArray || resolvedType is Compound) {
+        final String value;
+        final String sourceAddress;
+        if (resolvedType is ConstantArray) {
+          value = '$dartType((numElements: ${resolvedType.length}, '
+              'addr: ${resolvedType.getInteropDartType(w)}($memberAddress)))';
+          sourceAddress = 'val.internal.addr.addr';
+        } else {
+          value = '$dartType(Pointer<$dartType>($memberAddress))';
+          sourceAddress = 'val.address.addr';
+        }
+        // Inline aggregates are views, not pointer-valued slots. Assignment
+        // copies all bytes (including padding) and permits overlapping views.
+        s.write("""
+$dartType get $memberName => $value;
+set $memberName($dartType val) {
+  final heap = NativeLibrary.instance.HEAPU8.toDart;
+  final source = $sourceAddress;
+  final bytes = heap.sublist(source, source + ${resolvedType.sizeInBytes});
+  heap.setRange($memberAddress, $memberAddress + ${resolvedType.sizeInBytes}, bytes);
+}
+""");
+        continue;
+      }
+
       String box(String inner, String addr) {
-        if (m.type is ConstantArray) {
-          var arrType = m.type as ConstantArray;
-          return '$dartType((numElements: ${arrType.length}, addr: ${m.type.getInteropDartType(w)}(this.address.addr + $offset)))';
-        } else if (m.type is PointerType) {
+        if (resolvedType is PointerType) {
           return '$dartType($inner.toDartInt)';
-        } else if (m.type is EnumClass) {
-          // EnumClass extends BindingType, so check it before BindingType.
-          // For enum members, value is already converted to int.
-          return inner;
-        } else if (m.type is BooleanType) {
+        } else if (resolvedType is BooleanType) {
           return '$inner.toDartInt == 1';
-        } else if (m.type is BindingType) {
-          return '${m.type.getInteropDartType(w)}(Pointer<${m.type.getInteropDartType(w)}>(addr))';
         }
         return inner;
       }
 
       String boxJS(String inner) {
-        if (m.type is BooleanType) {
+        if (resolvedType is BooleanType) {
           return '($inner ? 1 : 0).toJS';
-        } else if (m.type is ConstantArray) {
-          return '${inner}.internal.addr.addr.toJS';
-        } else if (m.type is EnumClass) {
-          // EnumClass extends BindingType, so check it before BindingType.
-          // For enum members, we just convert the int value to JS.
-          return '$inner.toJS';
-        } else if (m.type is BindingType) {
-          return '${inner}.address.toJS';
         }
         return '$inner.toJS';
       }
@@ -190,19 +210,53 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
       // Determine the property name to use for the int getter/setter.
       // For enum types, use 'AsInt' suffix so the enum getter can reference it.
       final isEnumClass = m.type is EnumClass;
-      final generateAsInt = isEnumClass ? (m.type as EnumClass).generateAsInt : true;
-      final propertyName = (isEnumClass && !generateAsInt)
-          ? '${memberName}AsInt'
-          : memberName;
+      final generateAsInt =
+          isEnumClass ? (m.type as EnumClass).generateAsInt : true;
+      final propertyName =
+          (isEnumClass && !generateAsInt) ? '${memberName}AsInt' : memberName;
+
+      final nativeName = resolvedType.getNativeType();
+      final dataMethod = switch (resolvedType.llvmType) {
+        'float' => 'Float32',
+        'double' => 'Float64',
+        'i16' => nativeName.startsWith('u') ? 'Uint16' : 'Int16',
+        'i32' => nativeName.startsWith('u') ? 'Uint32' : 'Int32',
+        '*' => 'Uint32',
+        _ => null,
+      };
+      final String unalignedGetter;
+      final String unalignedSetter;
+      if (dataMethod != null) {
+        final read = 'data.get$dataMethod(addr.addr, Endian.little)';
+        final value = resolvedType is PointerType ? '$dartType($read)' : read;
+        final input = resolvedType is PointerType ? 'val.addr' : 'val';
+        unalignedGetter = """
+  if (addr.addr % ${resolvedType.sizeInBytes} != 0) {
+    final data = ByteData.sublistView(NativeLibrary.instance.HEAPU8.toDart);
+    return $value;
+  }
+""";
+        unalignedSetter = """
+  if (addr.addr % ${resolvedType.sizeInBytes} != 0) {
+    final data = ByteData.sublistView(NativeLibrary.instance.HEAPU8.toDart);
+    data.set$dataMethod(addr.addr, $input, Endian.little);
+    return;
+  }
+""";
+      } else {
+        unalignedGetter = '';
+        unalignedSetter = '';
+      }
 
       s.write('''
 $dartType get $propertyName {
   final addr = Pointer<$enclosingClassName>(this.address.addr + $offset);
-  final value = NativeLibrary.instance.getValue(addr, '${m.type.llvmType}')$toDart;
+$unalignedGetter  final value = NativeLibrary.instance.getValue(addr, '${m.type.llvmType}')$toDart;
   return ${box('value', 'addr')};
 }
 set $propertyName($dartType val) {
-  NativeLibrary.instance.setValue(Pointer<$enclosingClassName>(this.address.addr + $offset), ${boxJS('val')}, '${m.type.llvmType}');
+  final addr = Pointer<$enclosingClassName>(this.address.addr + $offset);
+$unalignedSetter  NativeLibrary.instance.setValue(addr, ${boxJS('val')}, '${m.type.llvmType}');
 }
 ''');
 
@@ -213,8 +267,6 @@ set $propertyName($dartType val) {
           '$enumName.fromValue($propertyName);\n\n',
         );
       }
-
-      offset += m.type.sizeInBytes;
     }
 
     // Add constructor with required named parameters
@@ -250,6 +302,9 @@ static Pointer<$name> stackAlloc() {
   }
 
   @override
+  String getWasmInteropType(Writer w) => name;
+
+  @override
   String getNativeType({String varName = ''}) => '$nativeType $varName';
 }
 
@@ -259,10 +314,14 @@ class Member {
   String name;
   final Type type;
 
+  /// Byte offset reported by Clang, including internal padding.
+  final int? offsetInBytes;
+
   Member({
     String? originalName,
     required this.name,
     required this.type,
+    this.offsetInBytes,
     this.dartDoc,
   }) : originalName = originalName ?? name;
 }
