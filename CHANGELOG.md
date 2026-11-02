@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.0
 
 - Use Clang's target ABI field offsets and record sizes for JS struct and union
   bindings, including internal/tail padding and anonymous nested records.
@@ -9,6 +9,9 @@
 - Add Clang layout tests and extend the existing example with real Emscripten
   ABI round trips for Dart-to-JS and Dart-to-Wasm. `bash example/build.sh` runs
   the generator tests and all example checks locally and on pull requests.
+
+Consumers must regenerate JS bindings and use the updated runtime to pick up
+the corrected layout and array access.
 
 ## 0.0.17-pre
 
