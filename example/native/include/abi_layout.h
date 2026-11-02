@@ -1,8 +1,11 @@
-#ifndef LAYOUT_H
-#define LAYOUT_H
+#ifndef EXAMPLE_ABI_LAYOUT_H
+#define EXAMPLE_ABI_LAYOUT_H
 
-typedef unsigned char uint8_t;
-typedef short int16_t;
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct Padded {
     uint8_t enabled;
@@ -59,4 +62,7 @@ void fillNested(Nested *value);
 void fillPacked(Packed *value);
 void fillChoice(Choice *value);
 int checkSizes(int padded, int nested, int packed, int choice);
+#ifdef __cplusplus
+}
+#endif
 #endif

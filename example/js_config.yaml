@@ -4,7 +4,13 @@ output: 'lib/generated_bindings_js.g.dart'
 headers:
   entry-points:
     - 'native/include/example.h'
+  include-directives:
+    - 'native/include/*.h'
 enums:
   as-int:
     include:
       - MyEnumAsInt
+# Layout-only declarations let parser tests inspect unsupported/unused records.
+functions:
+  exclude:
+    - 'use(Padded|Nested|Packed|Choice|Anonymous|OverAligned|Arrays|Bitfield)'

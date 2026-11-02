@@ -10,8 +10,8 @@ void main() {
   setUpAll(() {
     final library = parse(Config(
       output: Uri.file('${Directory.systemTemp.path}/unused-layout.dart'),
-      entryPoints: [File('test/fixtures/layout.h').absolute.uri],
-      compilerOpts: ['-x', 'c', '-std=c11'],
+      entryPoints: [File('example/native/include/abi_layout.h').absolute.uri],
+      compilerOpts: ['-x', 'c', '-std=c11', '-ffreestanding'],
       functionDecl: DeclarationFilters.includeAll,
     ));
     compounds = {

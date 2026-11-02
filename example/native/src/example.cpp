@@ -225,4 +225,39 @@ void EMSCRIPTEN_KEEPALIVE foo(TGltfMeshData str) {
         str.vertexCount, str.indexCount, str.primitiveType);
 }
 
+// ABI layout regression checks shared by both Dart consumers.
+static_assert(sizeof(Padded) == 20, "Padded size");
+static_assert(offsetof(Padded, values) == 4, "Padded.values offset");
+static_assert(sizeof(Packed) == 35, "Packed size");
+static_assert(offsetof(Packed, entry) == 7, "Packed.entry offset");
+static_assert(sizeof(Choice) == 24, "Choice size");
+
+int EMSCRIPTEN_KEEPALIVE checkPadded(Padded *v) {
+    return v->enabled == 7 && v->values[0] == 0.125f &&
+        v->values[1] == 0.5f && v->values[2] == 0.875f && v->tail == 9;
+}
+int EMSCRIPTEN_KEEPALIVE checkPacked(Packed *v) {
+    Padded entry = v->entry;
+    return v->tag == 5 && v->amount == 1.25f && v->count == -1234 &&
+        checkPadded(&entry) && v->samples[0] == 2.0f && v->samples[1] == 4.0f;
+}
+void EMSCRIPTEN_KEEPALIVE fillNested(Nested *v) {
+    v->tag = 3;
+    v->entry = Padded{7, {0.125f, 0.5f, 0.875f}, 9};
+    v->end = 11;
+}
+void EMSCRIPTEN_KEEPALIVE fillPacked(Packed *v) {
+    v->tag = 5;
+    v->amount = 1.25f;
+    v->count = -1234;
+    v->entry = Padded{7, {0.125f, 0.5f, 0.875f}, 9};
+    v->samples[0] = 2.0f;
+    v->samples[1] = 4.0f;
+}
+void EMSCRIPTEN_KEEPALIVE fillChoice(Choice *v) { v->number = 8.5; }
+int EMSCRIPTEN_KEEPALIVE checkSizes(int padded, int nested, int packed, int choice) {
+    return padded == sizeof(Padded) && nested == sizeof(Nested) &&
+        packed == sizeof(Packed) && choice == sizeof(Choice);
+}
+
 }

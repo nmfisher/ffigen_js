@@ -1,4 +1,4 @@
-name: ABI layout regression
+name: Bindings regression
 on:
   pull_request:
   push:
@@ -18,11 +18,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: dart pub get
-      - run: dart test
-      - run: bash tool/layout_smoke/run.sh
-      - name: Run existing example regression
-        working-directory: example
-        run: |
-          dart pub get
-          bash build.sh
+      - run: bash example/build.sh

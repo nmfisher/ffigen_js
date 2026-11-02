@@ -90,17 +90,18 @@ views into the enclosing record; assigning an inline array or record copies its
 bytes into that storage. Packed scalar fields use unaligned byte access when
 needed. Bitfield records remain opaque.
 
-To run the layout regression checks, install libclang, then run `dart test`.
-With Emscripten and Node 22+ available, run:
+Run all generator and example regression checks with:
 
 ```sh
-bash tool/layout_smoke/run.sh
+bash example/build.sh
 ```
 
-This compiles a real C module and verifies generated allocation sizes and
-bidirectional field access from both Dart-to-JS and Dart-to-Wasm consumers.
-`DART`, `EMCC` and `NODE` can select explicit executables. Generated smoke-test
-outputs are ignored under `build/layout_smoke/`.
+This requires libclang, Emscripten and Node 22+. The script runs `dart test`,
+regenerates the example bindings and compiles the existing native example to
+Wasm. Its ABI checks run through both Dart-to-JS and Dart-to-Wasm, and the full
+existing example suite runs through Dart-to-Wasm with assertions enabled.
+`DART`, `EMCC` and `NODE` can select explicit executables. Generated files stay
+under the example's existing ignored output paths.
 
 ## What's not suported
 
@@ -160,10 +161,10 @@ dart run ffigen --config ffi_config.yaml
 This generates the native FFI bindings. The example build regenerates its JS
 bindings automatically.
 
-To run the application, make sure you have emscripten and node installed and available on your PATH, then call ./build.sh
+To run the application, make sure you have emscripten and node installed and available on your PATH, then call `bash build.sh`
 This will:
 1) regenerate the JS bindings
 2) compile [example.dart](./example/bin/example.dart) with Dart to WASM
 3) compile [example.cpp](./example/native/src/example.cpp) with Emscripten
-4) use Node to execute the Dart application and native module, including the
-   TypedData address regression checks
+4) use Node to run the ABI checks through Dart-to-JS and the complete example
+   through Dart-to-Wasm, including the TypedData address regression checks

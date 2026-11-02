@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:ffigen_js_example/generated_bindings_js.g.dart';
+import 'package:ffigen_js_example/abi_layout_checks.dart';
 
 void _expectHeapAddress(TypedData data, int address, String label) {
   assert(
@@ -13,6 +14,7 @@ void _expectHeapAddress(TypedData data, int address, String label) {
 void main(List<String> args) async {
   print("Running WASM example");
   GeneratedBindings.initBindings("module");
+  runAbiLayoutChecks();
 
   assert(returns_bool() == false);
 

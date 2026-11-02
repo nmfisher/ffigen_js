@@ -1,7 +1,7 @@
 import 'dart:js_interop';
-import '../../build/layout_smoke/bindings.dart';
+import 'generated_bindings_js.g.dart';
 
-@JS('layout.allocations')
+@JS('module.allocations')
 external JSArray<JSNumber> get allocations;
 
 void check(bool value, String message) {
@@ -10,8 +10,7 @@ void check(bool value, String message) {
 
 int lastAllocation() => allocations.toDart.last.toDartInt;
 
-void main() {
-  GeneratedBindings.initBindings('layout');
+void runAbiLayoutChecks() {
   final p = Padded.stackAlloc();
   final paddedSize = lastAllocation();
   final v = p.toDart();
@@ -68,5 +67,5 @@ void main() {
       checkPadded(other.address) == 1, 'inline array assignment copies bytes');
   check(checkSizes(paddedSize, nestedSize, packedSize, choiceSize) == 1,
       'generated allocation sizes match sizeof compiled for Wasm');
-  print('ABI LAYOUT SMOKE OK');
+  print('All ABI layout tests passed');
 }

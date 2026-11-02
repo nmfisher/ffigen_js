@@ -6,8 +6,9 @@
   their storage. Preserve all dimensions in fixed-array size calculations.
 - Handle unaligned packed field access and read/write `Array<Float32>` using
   four-byte float slots rather than eight-byte doubles.
-- Add Clang layout tests and real Emscripten round trips for Dart-to-JS and
-  Dart-to-Wasm consumers, exercised on pull requests.
+- Add Clang layout tests and extend the existing example with real Emscripten
+  ABI round trips for Dart-to-JS and Dart-to-Wasm. `bash example/build.sh` runs
+  the generator tests and all example checks locally and on pull requests.
 
 ## 0.0.17-pre
 

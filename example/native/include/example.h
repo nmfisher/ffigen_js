@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "abi_layout.h"
 
 #ifdef __cplusplus
 extern "C"
