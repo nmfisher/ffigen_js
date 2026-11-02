@@ -35,7 +35,7 @@ class PointerType extends Type {
   @override
   String getInteropDartType(Writer w) {
     final resolvedChild = child.typealiasType;
-    if (resolvedChild is PointerType || resolvedChild is Struct) {
+    if (resolvedChild is PointerType || resolvedChild is Compound) {
       return 'Pointer<${resolvedChild.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
     }
     return 'Pointer<${child.getWasmInteropType(w).replaceAll("Pointer<", "PointerClass<")}>';
@@ -46,7 +46,7 @@ class PointerType extends Type {
     final resolvedChild = child.typealiasType;
     if (child == NativeType(SupportedNativeType.char)) {
       return 'Pointer<Char>';
-    } else if (resolvedChild is PointerType || resolvedChild is Struct) {
+    } else if (resolvedChild is PointerType || resolvedChild is Compound) {
       return 'Pointer<${resolvedChild.getDartType(w).replaceAll("Pointer<", "PointerClass<")}>';
     } else {
       return 'Pointer<${child.getWasmInteropType(w)}>';
@@ -103,7 +103,7 @@ class ConstantArray extends PointerType {
   }
 
   @override
-  int get sizeInBytes => length * baseArrayType.sizeInBytes;
+  int get sizeInBytes => length * child.sizeInBytes;
 }
 
 /// Represents an incomplete array, which has an unknown size.

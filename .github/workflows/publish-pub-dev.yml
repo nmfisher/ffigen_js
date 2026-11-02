@@ -109,6 +109,9 @@ jobs:
       - name: Install dependencies
         run: dart pub get
 
+      - name: Install libclang for ABI layout tests
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
       - name: Run tests
         run: dart test
 

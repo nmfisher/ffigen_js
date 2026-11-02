@@ -40,14 +40,4 @@ class Struct extends Compound {
 
   @override
   String get llvmType => '*';
-
-  @override
-  int get sizeInBytes {
-    int size = 0;
-    for (final member in members) {
-      size += member.type.sizeInBytes;
-    }
-    return size;
-  }
-
 }

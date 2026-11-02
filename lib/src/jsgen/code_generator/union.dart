@@ -40,10 +40,5 @@ class Union extends Compound {
   }) : super(compoundType: CompoundType.union);
 
   @override
-  // TODO: implement llvmType
-  String get llvmType => throw UnimplementedError();
-
-  @override
-  // TODO: implement sizeInBytes
-  int get sizeInBytes => throw UnimplementedError();
+  String get llvmType => '*';
 }

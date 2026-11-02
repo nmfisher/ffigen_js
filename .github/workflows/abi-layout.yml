@@ -1,0 +1,23 @@
+name: ABI layout regression
+on:
+  pull_request:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.73'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: dart pub get
+      - run: dart test
+      - run: bash tool/layout_smoke/run.sh

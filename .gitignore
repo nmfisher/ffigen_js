@@ -9,3 +9,6 @@ pubspec.lock
 example/build
 example/lib/*.g.dart
 .tina/
+
+# Real-Wasm ABI layout regression output.
+/build/layout_smoke/

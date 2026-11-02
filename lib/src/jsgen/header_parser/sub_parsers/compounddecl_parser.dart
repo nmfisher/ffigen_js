@@ -2,6 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+import 'dart:ffi';
+
+import 'package:ffi/ffi.dart';
 import 'package:logging/logging.dart';
 
 import '../../code_generator.dart';
@@ -19,15 +22,18 @@ final _logger = Logger('ffigen.header_parser.compounddecl_parser');
 /// Holds temporary information regarding [compound] while parsing.
 class _ParsedCompound {
   Compound compound;
+  final clang_types.CXType nativeType;
   bool unimplementedMemberType = false;
   bool flexibleArrayMember = false;
   bool bitFieldMember = false;
   bool dartHandleMember = false;
   bool incompleteCompoundMember = false;
+  bool invalidLayout = false;
 
-  _ParsedCompound(this.compound);
+  _ParsedCompound(this.compound, this.nativeType);
 
   bool get isIncomplete =>
+      invalidLayout ||
       unimplementedMemberType ||
       flexibleArrayMember ||
       bitFieldMember ||
@@ -178,7 +184,12 @@ void fillCompoundMembersIfNeeded(
   if (skipDependencies) return;
   cursor = cursorIndex.getDefinition(cursor);
 
-  final parsed = _ParsedCompound(compound);
+  final nativeType = cursor.type();
+  final parsed = _ParsedCompound(compound, nativeType);
+  final size = clang.clang_Type_getSizeOf(nativeType);
+  compound.nativeSize = size >= 0 ? size : null;
+  compound.nativeAlignment = nativeType.alignment();
+  parsed.invalidLayout = size < 0;
   final className = _compoundTypeDebugName(compoundType);
   parsed.hasAttr = clang.clang_Cursor_hasAttrs(cursor) != 0;
   parsed.alignment = cursor.type().alignment();
@@ -282,6 +293,8 @@ void _compoundMembersVisitor(
             originalName: cursor.spelling(),
             name: config.structDecl.renameMember(decl, cursor.spelling()),
             type: mt,
+            offsetInBytes: _byteOffset(
+                clang.clang_Cursor_getOffsetOfField(cursor), parsed),
           ),
         );
 
@@ -316,6 +329,8 @@ void _compoundMembersVisitor(
             originalName: spelling,
             name: config.structDecl.renameMember(decl, spelling),
             type: mt,
+            offsetInBytes: _byteOffset(
+                _anonymousRecordOffset(cursor, parsed.nativeType), parsed),
           ),
         );
 
@@ -326,6 +341,41 @@ void _compoundMembersVisitor(
     _logger.severe(s);
     rethrow;
   }
+}
+
+int? _byteOffset(int bits, _ParsedCompound parsed) {
+  if (bits < 0 || bits % 8 != 0) {
+    parsed.invalidLayout = true;
+    _logger.warning('Cannot determine byte layout for ${parsed.compound.name}');
+    return null;
+  }
+  return bits ~/ 8;
+}
+
+int _anonymousRecordOffset(
+    clang_types.CXCursor cursor, clang_types.CXType parent) {
+  int offset = -1;
+  cursor.visitChildrenMayRecurse((child, _) {
+    if (child.kind == clang_types.CXCursorKind.CXCursor_FieldDecl &&
+        child.spelling().isNotEmpty) {
+      final name = child.spelling().toNativeUtf8();
+      try {
+        final outer = clang.clang_Type_getOffsetOf(parent, name.cast<Char>());
+        final inner =
+            clang.clang_Type_getOffsetOf(cursor.type(), name.cast<Char>());
+        if (outer >= 0 && inner >= 0) {
+          offset = outer - inner;
+          return clang_types.CXChildVisitResult.CXChildVisit_Break;
+        }
+      } finally {
+        calloc.free(name);
+      }
+    }
+    return child.isAnonymousRecordDecl()
+        ? clang_types.CXChildVisitResult.CXChildVisit_Recurse
+        : clang_types.CXChildVisitResult.CXChildVisit_Continue;
+  });
+  return offset;
 }
 
 String _compoundTypeDebugName(CompoundType compoundType) {

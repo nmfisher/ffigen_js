@@ -1,0 +1,10 @@
+name: LayoutBindings
+description: ABI layout regression fixture.
+output: '../../build/layout_smoke/bindings.dart'
+headers:
+  entry-points:
+    - '../../test/fixtures/layout.h'
+functions:
+  include:
+    - 'check.*'
+    - 'fill.*'

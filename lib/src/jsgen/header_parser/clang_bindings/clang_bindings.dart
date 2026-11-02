@@ -1077,6 +1077,27 @@ class Clang {
   late final _clang_Type_getAlignOf =
       _clang_Type_getAlignOfPtr.asFunction<int Function(CXType)>();
 
+  /// Size in bytes, including the target ABI's tail padding.
+  int clang_Type_getSizeOf(CXType type) => _clang_Type_getSizeOf(type);
+  late final _clang_Type_getSizeOf = _lookup<
+      ffi.NativeFunction<ffi.LongLong Function(CXType)>>(
+          'clang_Type_getSizeOf').asFunction<int Function(CXType)>();
+
+  /// Field offset in bits, or a negative CXTypeLayoutError.
+  int clang_Cursor_getOffsetOfField(CXCursor cursor) =>
+      _clang_Cursor_getOffsetOfField(cursor);
+  late final _clang_Cursor_getOffsetOfField = _lookup<
+      ffi.NativeFunction<ffi.LongLong Function(CXCursor)>>(
+          'clang_Cursor_getOffsetOfField').asFunction<int Function(CXCursor)>();
+
+  /// Also resolves names promoted from anonymous records.
+  int clang_Type_getOffsetOf(CXType type, ffi.Pointer<ffi.Char> name) =>
+      _clang_Type_getOffsetOf(type, name);
+  late final _clang_Type_getOffsetOf = _lookup<
+      ffi.NativeFunction<ffi.LongLong Function(CXType, ffi.Pointer<ffi.Char>)>>(
+          'clang_Type_getOffsetOf')
+      .asFunction<int Function(CXType, ffi.Pointer<ffi.Char>)>();
+
   /// Return the type that was modified by this attributed type.
   ///
   /// If the type is not an attributed type, an invalid type is returned.

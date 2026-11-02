@@ -81,6 +81,27 @@ compiler-opts:
   - 'wasm32-unknown-wasip1'
 ```
 
+## Struct and union layout
+
+Generated field addresses and stack allocation sizes use the layout reported by
+Clang for the configured target. This preserves internal padding, tail padding,
+union overlap and nested record sizes. Inline array and record getters return
+views into the enclosing record; assigning an inline array or record copies its
+bytes into that storage. Packed scalar fields use unaligned byte access when
+needed. Bitfield records remain opaque.
+
+To run the layout regression checks, install libclang, then run `dart test`.
+With Emscripten and Node 22+ available, run:
+
+```sh
+bash tool/layout_smoke/run.sh
+```
+
+This compiles a real C module and verifies generated allocation sizes and
+bidirectional field access from both Dart-to-JS and Dart-to-Wasm consumers.
+`DART`, `EMCC` and `NODE` can select explicit executables. Generated smoke-test
+outputs are ignored under `build/layout_smoke/`.
+
 ## What's not suported
 
 ### Compilers other than Emscripten

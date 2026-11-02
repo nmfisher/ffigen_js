@@ -287,33 +287,27 @@ extension type const Array<T extends NativeType>(({int numElements, Pointer<T> a
 }
 
 extension ArrayInt32Ext on Array<Int32> {
-  int operator [](int i) {
-    return _lib.getValue(internal.addr + i, 'i32').toDartInt;
-  }
+  int operator [](int i) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .getInt32(internal.addr.addr + i * 4, Endian.little);
 
-  void operator []=(int i, int v) {
-    _lib.setValue(internal.addr + i, v.toJS, 'i32');
-  }
+  void operator []=(int i, int v) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .setInt32(internal.addr.addr + i * 4, v, Endian.little);
 }
 
 extension ArrayFloat32Ext on Array<Float32> {
-  double operator [](int i) {
-    return _lib.getValue(internal.addr + i, 'double').toDartDouble;
-  }
+  double operator [](int i) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .getFloat32(internal.addr.addr + i * 4, Endian.little);
 
-  void operator []=(int i, double v) {
-    _lib.setValue(internal.addr + i, v.toJS, 'double');
-  }
+  void operator []=(int i, double v) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .setFloat32(internal.addr.addr + i * 4, v, Endian.little);
 }
 
 extension ArrayFloat64Ext on Array<Float64> {
-  double operator [](int i) {
-    return _lib.getValue(internal.addr + i, 'double').toDartDouble;
-  }
+  double operator [](int i) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .getFloat64(internal.addr.addr + i * 8, Endian.little);
 
-  void operator []=(int i, double v) {
-    _lib.setValue(internal.addr + i, v.toJS, 'double');
-  }
+  void operator []=(int i, double v) => ByteData.sublistView(_lib.HEAPU8.toDart)
+      .setFloat64(internal.addr.addr + i * 8, v, Endian.little);
 }
 
 late NativeLibrary _lib;
