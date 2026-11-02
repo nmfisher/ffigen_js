@@ -21,3 +21,8 @@ jobs:
       - run: dart pub get
       - run: dart test
       - run: bash tool/layout_smoke/run.sh
+      - name: Run existing example regression
+        working-directory: example
+        run: |
+          dart pub get
+          bash build.sh
