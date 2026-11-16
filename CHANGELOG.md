@@ -1,3 +1,8 @@
+## 0.1.2
+
+- Correct `Char` and `Bool` sizes to one byte for `sizeOf`, pointer arithmetic,
+  and stack allocations, matching the Wasm C/C++ ABI.
+
 ## 0.1.1
 
 - Generate lossless `BigInt` accessors for signed 64-bit struct fields,
