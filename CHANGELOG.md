@@ -1,3 +1,11 @@
+## 0.1.3
+
+- Generate `sizeOf<T>()` for complete structs and unions using Clang's ABI size
+  constants, including padding. Primitive types retain runtime support and
+  opaque records remain unsupported. No module initialization is required.
+
+Regenerate JS bindings to expose the new `sizeOf<T>()` helper.
+
 ## 0.1.2
 
 - Correct `Char` and `Bool` sizes to one byte for `sizeOf`, pointer arithmetic,
