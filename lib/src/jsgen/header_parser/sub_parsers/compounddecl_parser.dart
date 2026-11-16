@@ -170,6 +170,14 @@ void fillCompoundMembersIfNeeded(
   bool pointerReference = false,
 }) {
   final compoundType = compound.compoundType;
+  final declaration = Declaration(
+    usr: compound.usr,
+    originalName: compound.originalName,
+  );
+  final explicitlyIncluded = (compoundType == CompoundType.struct
+          ? config.structDecl
+          : config.unionDecl)
+      .shouldInclude(declaration);
 
   // Skip dependencies if already seen OR user has specified `dependency-only`
   // as opaque AND this is a pointer reference AND the declaration was not
@@ -177,6 +185,7 @@ void fillCompoundMembersIfNeeded(
   final skipDependencies = compound.parsedDependencies ||
       (pointerReference &&
           ignoreFilter &&
+          !explicitlyIncluded &&
           ((compoundType == CompoundType.struct &&
                   config.structDependencies == CompoundDependencies.opaque) ||
               (compoundType == CompoundType.union &&
