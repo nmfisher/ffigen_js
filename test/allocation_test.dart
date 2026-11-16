@@ -11,6 +11,7 @@ import 'package:test/test.dart';
 void main() {
   final allocations = <int, int>{};
   final freed = <int>[];
+  final stackAllocationSizes = <int>[];
   late Uint8List heap;
   var nextAddress = 16;
   var failAllocation = false;
@@ -18,6 +19,7 @@ void main() {
   setUp(() {
     allocations.clear();
     freed.clear();
+    stackAllocationSizes.clear();
     heap = Uint8List(128 * 1024);
     nextAddress = 16;
     failAllocation = false;
@@ -39,8 +41,30 @@ void main() {
           freed.add(address);
           heap.fillRange(address, address + size, 0xcc);
         }).toJS);
-    module.setProperty('stackAlloc'.toJS, ((int _) => 96 * 1024).toJS);
+    module.setProperty(
+        'stackAlloc'.toJS,
+        ((int size) {
+          stackAllocationSizes.add(size);
+          return 96 * 1024;
+        }).toJS);
     NativeLibrary.instance = module as NativeLibrary;
+  });
+
+  test('Char and Bool pointer arithmetic advances by one byte per element', () {
+    expect(sizeOf<Char>(), 1);
+    expect(sizeOf<Bool>(), 1);
+    const chars = Pointer<Char>.fromAddress(128);
+    const bools = Pointer<Bool>.fromAddress(256);
+    expect((chars + 3).address, 131);
+    expect((bools + 3).address, 259);
+    expect((chars + -1).address, 127);
+    expect((bools + -1).address, 255);
+  });
+
+  test('Char and Bool stack allocations request one byte per element', () {
+    Char.stackAlloc(3);
+    Bool.stackAlloc(5);
+    expect(stackAllocationSizes, [3, 5]);
   });
 
   test('free releases a direct malloc allocation', () {

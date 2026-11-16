@@ -73,6 +73,7 @@ void fillNested(Nested *value);
 void fillPacked(Packed *value);
 void fillChoice(Choice *value);
 int checkSizes(int padded, int nested, int packed, int choice);
+int checkByteSizes(int charSize, int boolSize);
 void fillInt64Records(Int64Record *records);
 int checkInt64Records(Int64Record *records);
 void fillPackedInt64(PackedInt64 *value);
