@@ -10,6 +10,26 @@ void check(bool value, String message) {
 
 int lastAllocation() => allocations.toDart.last.toDartInt;
 
+int _genericSize<T extends NativeType>() => sizeOf<T>();
+
+void runSizeOfChecks() {
+  check(sizeOf<Padded>() == 20, 'sizeOf includes record tail padding');
+  check(sizeOf<Nested>() == 28, 'sizeOf includes nested record padding');
+  check(sizeOf<Packed>() == 35, 'sizeOf respects packed record layout');
+  check(_genericSize<Choice>() == 24, 'generic sizeOf supports unions');
+  check(_genericSize<Int64Record>() == 16, 'generic sizeOf supports structs');
+  check(sizeOf<PackedInt64>() == 9, 'sizeOf supports unaligned 64-bit records');
+  check(sizeOf<Int32>() == 4 && sizeOf<Float64>() == 8,
+      'sizeOf retains runtime primitive support');
+  var opaqueRejected = false;
+  try {
+    sizeOf<MyOpaqueStruct>();
+  } on UnsupportedError {
+    opaqueRejected = true;
+  }
+  check(opaqueRejected, 'sizeOf rejects opaque records');
+}
+
 void runAbiLayoutChecks() {
   check(checkByteSizes(sizeOf<Char>(), sizeOf<Bool>()) == 1,
       'Char and Bool sizes match sizeof compiled for Wasm');
@@ -69,8 +89,11 @@ void runAbiLayoutChecks() {
       checkPadded(other.address) == 1, 'inline array assignment copies bytes');
   check(checkSizes(paddedSize, nestedSize, packedSize, choiceSize) == 1,
       'generated allocation sizes match sizeof compiled for Wasm');
+  check(
+      checkSizes(sizeOf<Padded>(), sizeOf<Nested>(), sizeOf<Packed>(), sizeOf<Choice>()) == 1,
+      'generated sizeOf values match sizeof compiled for Wasm');
 
-  final records = malloc<Int64Record>(Int64Record.byteSize * 2);
+  final records = malloc<Int64Record>(sizeOf<Int64Record>() * 2);
   try {
     check(Int64Record.byteSize == 16, '64-bit record size includes padding');
     fillInt64Records(records);
