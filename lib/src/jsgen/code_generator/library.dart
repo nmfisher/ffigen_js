@@ -36,6 +36,16 @@ class Library {
   }) {
     _findBindings(bindings, sort);
 
+    // Keep the generated sizeOf helper available even when a C declaration
+    // uses that name. References to these bindings follow the renamed object.
+    final sizeOfNamer = UniqueNamer({
+      'sizeOf',
+      ...this.bindings.map((b) => b.name),
+    });
+    for (final b in this.bindings.where((b) => b.name == 'sizeOf')) {
+      _resolveIfNameConflicts(sizeOfNamer, b);
+    }
+
     final codeGenBindings = this.bindings.where((b) => b is Func || b is Global).toList();
     final typeBindings = this.bindings.where((b) => b is!Global && b is! Func && b.name != 'true' && b.name != 'false').toList();
 

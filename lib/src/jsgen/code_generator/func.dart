@@ -293,6 +293,9 @@ class Func extends Binding {
     }).join(',');
 
     if (writeModuleBinding) {
+      if (name != originalName) {
+        s.writeln("@JS('_$originalName')");
+      }
       s.write(
           '''external $interopReturnType $interopFunctionName($interopArgsString);\n''');
     } else {

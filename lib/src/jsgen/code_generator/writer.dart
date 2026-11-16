@@ -95,7 +95,11 @@ class Writer {
     required this.silenceEnumWarning,
     required this.nativeEntryPoints,
   }) {
-    final globalLevelNameSet = bindings.map((e) => e.name).toSet();
+    final globalLevelNameSet = {
+      'sizeOf',
+      ...bindings.map((e) => e.name),
+      ...typeBindings.map((e) => e.name),
+    };
     final wrapperLevelNameSet = bindings.map((e) => e.name).toSet();
     final allNameSet = <String>{}
       ..addAll(globalLevelNameSet)
@@ -193,6 +197,17 @@ class Writer {
       result.write(makeDoc('ignore_for_file: type=lint'));
     }
 
+    final runtimePrefix = _topLevelUniqueNamer.makeUnique('_ffigenJs');
+    s.write('''
+import 'dart:typed_data';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+import 'package:ffigen_js/ffigen_js.dart' hide sizeOf;
+import 'package:ffigen_js/ffigen_js.dart' as $runtimePrefix show sizeOf;
+export 'package:ffigen_js/ffigen_js.dart' hide sizeOf;
+
+''');
+
     /// Write [bindings].
     if (bindings.isNotEmpty) {
       // Write doc comment for wrapper class.
@@ -202,12 +217,6 @@ class Writer {
       // Write wrapper classs.
 
       s.write('''
-import 'dart:typed_data';
-import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
-import 'package:ffigen_js/ffigen_js.dart';
-export 'package:ffigen_js/ffigen_js.dart';
-
 extension type GeneratedBindings(NativeLibrary _) implements JSObject {
 
   static GeneratedBindings get instance => NativeLibrary.instance as GeneratedBindings;
@@ -235,6 +244,22 @@ extension type GeneratedBindings(NativeLibrary _) implements JSObject {
     for (final b in typeBindings) {
       s.write(b.toBindingString(this, writeModuleBinding: false).string);
     }
+
+    s.write('''
+/// The target ABI size in bytes, including record padding.
+/// Does not require initializing a native module. Opaque types are unsupported.
+int sizeOf<T extends NativeType>() {
+''');
+    for (final b in typeBindings.whereType<Compound>()) {
+      if (!b.isOpaque && !b.isIncomplete) {
+        s.writeln('  if (T == ${b.name}) return ${b.name}.byteSize;');
+      }
+    }
+    s.write('''
+  return $runtimePrefix.sizeOf<T>();
+}
+
+''');
 
     s.write('''extension StructAllocator on Struct {
   static T create<T>() {

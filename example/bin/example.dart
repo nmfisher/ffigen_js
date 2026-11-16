@@ -13,6 +13,7 @@ void _expectHeapAddress(TypedData data, int address, String label) {
 
 void main(List<String> args) async {
   print("Running WASM example");
+  runSizeOfChecks();
   GeneratedBindings.initBindings("module");
   runAbiLayoutChecks();
 
