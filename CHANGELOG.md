@@ -1,3 +1,14 @@
+## 0.1.1
+
+- Generate lossless `BigInt` accessors for signed 64-bit struct fields,
+  including packed, unaligned fields.
+- Expose Clang's padded record size as `byteSize` and generate indexed
+  pointer views for arrays of complete structs and unions.
+- Honor explicit struct inclusion when pointer dependencies are configured
+  as opaque.
+
+Regenerate JS bindings to pick up these changes.
+
 ## 0.1.0
 
 - Use Clang's target ABI field offsets and record sizes for JS struct and union
