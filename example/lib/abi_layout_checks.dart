@@ -11,6 +11,8 @@ void check(bool value, String message) {
 int lastAllocation() => allocations.toDart.last.toDartInt;
 
 void runAbiLayoutChecks() {
+  check(checkByteSizes(sizeOf<Char>(), sizeOf<Bool>()) == 1,
+      'Char and Bool sizes match sizeof compiled for Wasm');
   final p = Padded.stackAlloc();
   final paddedSize = lastAllocation();
   final v = p.toDart();

@@ -24,12 +24,12 @@ import 'dart:js_interop_unsafe';
 abstract class NativeType {}
 
 int sizeOf<T extends NativeType>() {
-  if (T == Float32 || T == Int32 || T == Uint32 || T == Char || T == Bool) {
+  if (T == Float32 || T == Int32 || T == Uint32) {
     return 4;
   }
   if (T == Float64 || T == Int64) return 8;
   if (T == Int16 || T == Uint16) return 2;
-  if (T == Int8 || T == Uint8) return 1;
+  if (T == Int8 || T == Uint8 || T == Char || T == Bool) return 1;
   if (T == PointerClass) return 4;
   throw UnsupportedError('sizeOf not supported for $T');
 }
@@ -83,13 +83,13 @@ Pointer<NativeFunction<T>> addFunction<T>(JSFunction fn, String signature) {
 
 abstract class Char extends NativeType {
   static Pointer<Char> stackAlloc(int count) {
-    return Pointer<Char>(_lib._stackAlloc<Char>(4 * count));
+    return Pointer<Char>(_lib._stackAlloc<Char>(count));
   }
 }
 
 abstract class Bool extends NativeType {
   static Pointer<Bool> stackAlloc(int count) {
-    return Pointer<Bool>(_lib._stackAlloc<Char>(4 * count));
+    return Pointer<Bool>(_lib._stackAlloc<Bool>(count));
   }
 }
 

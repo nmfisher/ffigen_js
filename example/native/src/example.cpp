@@ -263,6 +263,9 @@ int EMSCRIPTEN_KEEPALIVE checkSizes(int padded, int nested, int packed, int choi
     return padded == sizeof(Padded) && nested == sizeof(Nested) &&
         packed == sizeof(Packed) && choice == sizeof(Choice);
 }
+int EMSCRIPTEN_KEEPALIVE checkByteSizes(int charSize, int boolSize) {
+    return charSize == sizeof(char) && boolSize == sizeof(bool);
+}
 
 void EMSCRIPTEN_KEEPALIVE fillInt64Records(Int64Record *records) {
     records[0] = Int64Record{7, -9223372036854775807LL - 1};
