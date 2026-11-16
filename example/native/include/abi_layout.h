@@ -50,6 +50,14 @@ typedef struct Arrays {
     uint8_t tail;
 } Arrays;
 typedef struct Bitfield { unsigned int flag: 1; float value; } Bitfield;
+typedef struct Int64Record {
+    uint8_t tag;
+    long long value;
+} Int64Record;
+typedef struct __attribute__((packed)) PackedInt64 {
+    uint8_t tag;
+    long long value;
+} PackedInt64;
 
 void usePadded(Padded *value);
 void useNested(Nested *value);
@@ -65,6 +73,10 @@ void fillNested(Nested *value);
 void fillPacked(Packed *value);
 void fillChoice(Choice *value);
 int checkSizes(int padded, int nested, int packed, int choice);
+void fillInt64Records(Int64Record *records);
+int checkInt64Records(Int64Record *records);
+void fillPackedInt64(PackedInt64 *value);
+int checkPackedInt64(PackedInt64 *value);
 #ifdef __cplusplus
 }
 #endif

@@ -67,5 +67,29 @@ void runAbiLayoutChecks() {
       checkPadded(other.address) == 1, 'inline array assignment copies bytes');
   check(checkSizes(paddedSize, nestedSize, packedSize, choiceSize) == 1,
       'generated allocation sizes match sizeof compiled for Wasm');
+
+  final records = malloc<Int64Record>(Int64Record.byteSize * 2);
+  try {
+    check(Int64Record.byteSize == 16, '64-bit record size includes padding');
+    fillInt64Records(records);
+    check(records[0].value == BigInt.parse('-9223372036854775808'),
+        'native minimum signed 64-bit value');
+    check(records[1].value == BigInt.parse('9223372036854775807'),
+        'native maximum signed 64-bit value at the padded array stride');
+    records[0].value = BigInt.parse('9007199254740993');
+    records[1].value = BigInt.parse('-9007199254740993');
+    check(checkInt64Records(records) == 1,
+        '64-bit writes preserve integers outside JavaScript Number precision');
+  } finally {
+    free(records);
+  }
+
+  final packedInt64 = PackedInt64.stackAlloc();
+  check(PackedInt64.byteSize == 9, 'packed 64-bit record size');
+  fillPackedInt64(packedInt64);
+  check(packedInt64.toDart().value == BigInt.parse('-9223372036854775808'),
+      'unaligned signed 64-bit read');
+  packedInt64.toDart().value = BigInt.parse('9223372036854775807');
+  check(checkPackedInt64(packedInt64) == 1, 'unaligned signed 64-bit write');
   print('All ABI layout tests passed');
 }

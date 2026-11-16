@@ -116,6 +116,7 @@ abstract class Compound extends BindingType {
     /// Adding [enclosingClassName] because dart doesn't allow class member
     /// to have the same name as the class.
     final localUniqueNamer = UniqueNamer({enclosingClassName});
+    if (!isOpaque) localUniqueNamer.markUsed('byteSize');
 
     /// Marking type names because dart doesn't allow class member to have the
     /// same name as a type name used internally.
@@ -135,13 +136,22 @@ extension ${name}Ext on Pointer<$name> {
   $enclosingClassName toDart() {
     return $enclosingClassName(this);
   }
-}''');
+''');
+    if (!isOpaque) {
+      s.write('''
+  $enclosingClassName operator [](int index) {
+    return $enclosingClassName(Pointer<$name>(addr + index * $enclosingClassName.byteSize));
+  }
+''');
+    }
+    s.write('}');
 
     s.write('''
 final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} {
 
     Pointer<$enclosingClassName> get address => super.address.cast();
 ''');
+    if (!isOpaque) s.write('static const int byteSize = $sizeInBytes;\n');
     const depth = '  ';
     for (final m in members) {
       final offset = m.offsetInBytes ??
@@ -166,6 +176,25 @@ final class $enclosingClassName extends  ${isOpaque ? 'Struct' : dartClassName} 
 
       final resolvedType = m.type.typealiasType;
       final memberAddress = 'this.address.addr + $offset';
+      if (resolvedType.llvmType == 'i64') {
+        final highRead = resolvedType.getNativeType().startsWith('u')
+            ? 'getUint32'
+            : 'getInt32';
+        s.write('''
+BigInt get $memberName {
+  final data = ByteData.sublistView(NativeLibrary.instance.HEAPU8.toDart);
+  final low = data.getUint32($memberAddress, Endian.little);
+  final high = data.$highRead($memberAddress + 4, Endian.little);
+  return (BigInt.from(high) << 32) | BigInt.from(low);
+}
+set $memberName(BigInt val) {
+  final data = ByteData.sublistView(NativeLibrary.instance.HEAPU8.toDart);
+  data.setUint32($memberAddress, val.toUnsigned(32).toInt(), Endian.little);
+  data.setUint32($memberAddress + 4, (val >> 32).toUnsigned(32).toInt(), Endian.little);
+}
+''');
+        continue;
+      }
       if (resolvedType is ConstantArray || resolvedType is Compound) {
         final String value;
         final String sourceAddress;

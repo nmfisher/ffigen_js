@@ -231,6 +231,10 @@ static_assert(offsetof(Padded, values) == 4, "Padded.values offset");
 static_assert(sizeof(Packed) == 35, "Packed size");
 static_assert(offsetof(Packed, entry) == 7, "Packed.entry offset");
 static_assert(sizeof(Choice) == 24, "Choice size");
+static_assert(sizeof(Int64Record) == 16, "Int64Record size");
+static_assert(offsetof(Int64Record, value) == 8, "Int64Record.value offset");
+static_assert(sizeof(PackedInt64) == 9, "PackedInt64 size");
+static_assert(offsetof(PackedInt64, value) == 1, "PackedInt64.value offset");
 
 int EMSCRIPTEN_KEEPALIVE checkPadded(Padded *v) {
     return v->enabled == 7 && v->values[0] == 0.125f &&
@@ -258,6 +262,23 @@ void EMSCRIPTEN_KEEPALIVE fillChoice(Choice *v) { v->number = 8.5; }
 int EMSCRIPTEN_KEEPALIVE checkSizes(int padded, int nested, int packed, int choice) {
     return padded == sizeof(Padded) && nested == sizeof(Nested) &&
         packed == sizeof(Packed) && choice == sizeof(Choice);
+}
+
+void EMSCRIPTEN_KEEPALIVE fillInt64Records(Int64Record *records) {
+    records[0] = Int64Record{7, -9223372036854775807LL - 1};
+    records[1] = Int64Record{9, 9223372036854775807LL};
+}
+int EMSCRIPTEN_KEEPALIVE checkInt64Records(Int64Record *records) {
+    return records[0].tag == 7 && records[1].tag == 9 &&
+        records[0].value == 9007199254740993LL &&
+        records[1].value == -9007199254740993LL;
+}
+void EMSCRIPTEN_KEEPALIVE fillPackedInt64(PackedInt64 *value) {
+    value->tag = 5;
+    value->value = -9223372036854775807LL - 1;
+}
+int EMSCRIPTEN_KEEPALIVE checkPackedInt64(PackedInt64 *value) {
+    return value->tag == 5 && value->value == 9223372036854775807LL;
 }
 
 }
